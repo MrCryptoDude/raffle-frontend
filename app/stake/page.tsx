@@ -40,6 +40,7 @@ export default function StakePage() {
   const user = (address ?? addr0) as `0x${string}`;
 
   const raffleBalQ = useReadContract({
+    chainId: REQUIRED_CHAIN_ID,
     abi: erc20Abi,
     address: addresses.raffle,
     functionName: "balanceOf",
@@ -48,6 +49,7 @@ export default function StakePage() {
   });
 
   const stakedBalQ = useReadContract({
+    chainId: REQUIRED_CHAIN_ID,
     abi: stakingAbi,
     address: addresses.staking,
     functionName: "balanceOf",
@@ -56,6 +58,7 @@ export default function StakePage() {
   });
 
   const earnedQ = useReadContract({
+    chainId: REQUIRED_CHAIN_ID,
     abi: stakingAbi,
     address: addresses.staking,
     functionName: "earned",
@@ -64,6 +67,7 @@ export default function StakePage() {
   });
 
   const queuedQ = useReadContract({
+    chainId: REQUIRED_CHAIN_ID,
     abi: stakingAbi,
     address: addresses.staking,
     functionName: "queuedRewards",
@@ -71,6 +75,7 @@ export default function StakePage() {
   });
 
   const pendingNextQ = useReadContract({
+    chainId: REQUIRED_CHAIN_ID,
     abi: stakingAbi,
     address: addresses.staking,
     functionName: "pendingNextEpochRewards",
@@ -78,6 +83,7 @@ export default function StakePage() {
   });
 
   const epochRewardQ = useReadContract({
+    chainId: REQUIRED_CHAIN_ID,
     abi: stakingAbi,
     address: addresses.staking,
     functionName: "getRewardForCurrentEpoch",
@@ -85,6 +91,7 @@ export default function StakePage() {
   });
 
   const epochEndsQ = useReadContract({
+    chainId: REQUIRED_CHAIN_ID,
     abi: stakingAbi,
     address: addresses.staking,
     functionName: "epochEndsAt",
@@ -92,6 +99,7 @@ export default function StakePage() {
   });
 
   const paidQ = useReadContract({
+    chainId: REQUIRED_CHAIN_ID,
     abi: stakingAbi,
     address: addresses.staking,
     functionName: "totalCumulativeRewardsPaid",
@@ -99,6 +107,7 @@ export default function StakePage() {
   });
 
   const notifiedQ = useReadContract({
+    chainId: REQUIRED_CHAIN_ID,
     abi: stakingAbi,
     address: addresses.staking,
     functionName: "totalCumulativeRewardsNotified",
@@ -106,6 +115,7 @@ export default function StakePage() {
   });
 
   const totalStakedQ = useReadContract({
+    chainId: REQUIRED_CHAIN_ID,
     abi: erc20Abi,
     address: addresses.raffle,
     functionName: "balanceOf",
@@ -114,6 +124,7 @@ export default function StakePage() {
   });
 
   const allowanceQ = useReadContract({
+    chainId: REQUIRED_CHAIN_ID,
     abi: erc20Abi,
     address: addresses.raffle,
     functionName: "allowance",
@@ -192,6 +203,7 @@ export default function StakePage() {
     if (!writesEnabled || amountWei === 0n) return;
     await tx("APPROVING", async () =>
       writeContractAsync({
+        chainId: REQUIRED_CHAIN_ID,
         abi: erc20Abi,
         address: addresses.raffle,
         functionName: "approve",
@@ -204,6 +216,7 @@ export default function StakePage() {
     if (!writesEnabled || amountWei === 0n || needsApprove) return;
     await tx("STAKING", async () =>
       writeContractAsync({
+        chainId: REQUIRED_CHAIN_ID,
         abi: stakingAbi,
         address: addresses.staking,
         functionName: "stake",
@@ -216,6 +229,7 @@ export default function StakePage() {
     if (!writesEnabled || withdrawInvalid) return;
     await tx("WITHDRAWING", async () =>
       writeContractAsync({
+        chainId: REQUIRED_CHAIN_ID,
         abi: stakingAbi,
         address: addresses.staking,
         functionName: "withdraw",
@@ -228,6 +242,7 @@ export default function StakePage() {
     if (!writesEnabled) return;
     await tx("CLAIMING", async () =>
       writeContractAsync({
+        chainId: REQUIRED_CHAIN_ID,
         abi: stakingAbi,
         address: addresses.staking,
         functionName: "claim",

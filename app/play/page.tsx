@@ -88,6 +88,7 @@ function Pot({ title, rType, onCoinInsert, pulseToken, wrongNetwork, hasAddresse
   const cost = parseUnits((safeTicketsNum * 10).toString(), USDC_DECIMALS);
 
   const { data: round } = useReadContract({
+    chainId: REQUIRED_CHAIN_ID,
     abi: raffleManagerAbi,
     address: addresses.manager,
     functionName: "getRoundInfo",
@@ -96,6 +97,7 @@ function Pot({ title, rType, onCoinInsert, pulseToken, wrongNetwork, hasAddresse
   });
 
   const { data: last } = useReadContract({
+    chainId: REQUIRED_CHAIN_ID,
     abi: raffleManagerAbi,
     address: addresses.manager,
     functionName: "getLastResult",
@@ -123,6 +125,7 @@ function Pot({ title, rType, onCoinInsert, pulseToken, wrongNetwork, hasAddresse
   const p3 = last ? last[6] : 0n;
 
   const { data: allowance } = useReadContract({
+    chainId: REQUIRED_CHAIN_ID,
     abi: erc20Abi,
     address: addresses.usdc,
     functionName: "allowance",
@@ -138,6 +141,7 @@ function Pot({ title, rType, onCoinInsert, pulseToken, wrongNetwork, hasAddresse
   async function approve() {
     if (!address || wrongNetwork || !hasAddresses) return;
     await writeContractAsync({
+      chainId: REQUIRED_CHAIN_ID,
       abi: erc20Abi,
       address: addresses.usdc,
       functionName: "approve",
@@ -154,6 +158,7 @@ function Pot({ title, rType, onCoinInsert, pulseToken, wrongNetwork, hasAddresse
     } catch {}
 
     await writeContractAsync({
+      chainId: REQUIRED_CHAIN_ID,
       abi: raffleManagerAbi,
       address: addresses.manager,
       functionName: "deposit",
