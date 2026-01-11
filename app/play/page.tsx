@@ -216,13 +216,14 @@ function Pot({ title, rType, onCoinInsert, pulseToken, wrongNetwork, hasAddresse
         <div className="danger text-[10px] mt-2">TOO MANY. LEFT: {remainingTickets.toString()}</div>
       )}
 
-      <SlotWinners
-  trigger={Number(lastRoundId)}
-  lastRoundId={lastRoundId}
-  w1={w1 ?? "0x0000000000000000000000000000000000000000"}
-  w2={w2 ?? "0x0000000000000000000000000000000000000000"}
-  w3={w3 ?? "0x0000000000000000000000000000000000000000"}
-/>
+      <div className="mt-4">
+        <SlotWinners
+        trigger={Number(lastRoundId)}
+        lastRoundId={lastRoundId}
+          w1={w1 ?? "0x0000000000000000000000000000000000000000"}
+          w2={w2 ?? "0x0000000000000000000000000000000000000000"}
+          w3={w3 ?? "0x0000000000000000000000000000000000000000"}
+        />
 
 
         <div className="mt-3 inset statBox">
