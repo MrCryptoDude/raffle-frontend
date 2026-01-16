@@ -3,6 +3,7 @@ export const addresses = {
   manager: process.env.NEXT_PUBLIC_MANAGER as `0x${string}`,
   staking: process.env.NEXT_PUBLIC_STAKING as `0x${string}`,
   raffle: process.env.NEXT_PUBLIC_RAFFLE as `0x${string}`,
+  rps: process.env.NEXT_PUBLIC_RPS as `0x${string}`,
 };
 
 export const REQUIRED_CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 84532);

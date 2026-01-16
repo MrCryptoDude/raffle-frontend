@@ -5,6 +5,7 @@ import { useAccount, useChainId, useSwitchChain } from "wagmi";
 import { REQUIRED_CHAIN_ID } from "../lib/addresses";
 import { ConnectWallet } from "./ConnectWallet";
 import { LinksMenu } from "./LinksMenu";
+import { GamesMenu } from "./GamesMenu";
 
 export function Header() {
   const { isConnected } = useAccount();
@@ -24,9 +25,8 @@ export function Header() {
         </div>
 
         <div className="headerMid">
-          <Link className="btn btnBlue" href="/play">
-            PLAY
-          </Link>
+          <GamesMenu />
+
           <Link className="btn btnBlue" href="/stake">
             STAKE
           </Link>

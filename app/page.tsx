@@ -80,15 +80,7 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div className="mt-5 ctaRow">
-          <Link className="btn btnGold ctaBtn" href="/play">
-            PLAY THE RAFFLE
-          </Link>
-
-          <Link className="btn btnMint ctaBtn" href="/stake">
-            STAKE & EARN
-          </Link>
-        </div>
+        
 
         <div className="muted text-[10px] mt-4 text-center">
           TIP: IF YOUR WALLET IS ON THE WRONG NETWORK, SWITCH TO BASE SEPOLIA.

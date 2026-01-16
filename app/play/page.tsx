@@ -13,7 +13,7 @@ const TICKET_PRICE = 10n * 10n ** 6n;
 
 type PotProps = {
   title: string;
-  rType: 0 | 1 | 2;
+  rType: 0 | 1 | 2 | 3;
   onCoinInsert?: () => void;
   pulseToken?: number;
   wrongNetwork: boolean;
@@ -29,7 +29,6 @@ function isAddress(x: unknown): x is `0x${string}` {
   return typeof x === "string" && /^0x[a-fA-F0-9]{40}$/.test(x);
 }
 
-/** Coin “clink” without any audio file */
 function playCoinSound() {
   try {
     const AudioCtx = (window.AudioContext || (window as any).webkitAudioContext);
@@ -176,7 +175,7 @@ function Pot({ title, rType, onCoinInsert, pulseToken, wrongNetwork, hasAddresse
       <div className="mt-3 slot">
         <div className="h1">{formatUnits(targetPot, USDC_DECIMALS)} USDC</div>
         <div className="muted text-[10px]">
-          {drawing ? "DRAWING..." : "OPEN"} • {progressPct}% FILLED
+          {drawing ? "SETTLING..." : "OPEN"} • {progressPct}% FILLED
         </div>
 
         <div className="mt-2 bar">
@@ -223,13 +222,12 @@ function Pot({ title, rType, onCoinInsert, pulseToken, wrongNetwork, hasAddresse
 
       <div className="mt-4">
         <SlotWinners
-        trigger={Number(lastRoundId)}
-        lastRoundId={lastRoundId}
+          trigger={Number(lastRoundId)}
+          lastRoundId={lastRoundId}
           w1={w1 ?? "0x0000000000000000000000000000000000000000"}
           w2={w2 ?? "0x0000000000000000000000000000000000000000"}
           w3={w3 ?? "0x0000000000000000000000000000000000000000"}
         />
-
 
         <div className="mt-3 inset statBox">
           <div className="muted text-[10px]">LATEST (R{lastRoundId.toString()})</div>
@@ -243,7 +241,7 @@ function Pot({ title, rType, onCoinInsert, pulseToken, wrongNetwork, hasAddresse
 }
 
 export default function PlayPage() {
-  const { isConnected } = useAccount();
+  const { isConnected, address } = useAccount();
   const chainId = useChainId();
   const wrongNetwork = isConnected && chainId !== REQUIRED_CHAIN_ID;
 
@@ -253,8 +251,35 @@ export default function PlayPage() {
   const [pulseSmall, setPulseSmall] = React.useState(0);
   const [pulseMed, setPulseMed] = React.useState(0);
   const [pulseLarge, setPulseLarge] = React.useState(0);
+  const [pulseMega, setPulseMega] = React.useState(0);
+
+  // Claimable panel
+  const { data: claimable } = useReadContract({
+    chainId: REQUIRED_CHAIN_ID,
+    abi: raffleManagerAbi,
+    address: addresses.manager,
+    functionName: "claimable",
+    args: [address ?? "0x0000000000000000000000000000000000000000"],
+    query: { enabled: !!address && hasAddresses, refetchInterval: 2000 },
+  });
+
+  const claimableAmt = claimable ?? 0n;
+
+  const { writeContractAsync, isPending } = useWriteContract();
+
+  async function claimFn() {
+    if (!address || wrongNetwork || !hasAddresses) return;
+    await writeContractAsync({
+      chainId: REQUIRED_CHAIN_ID,
+      abi: raffleManagerAbi,
+      address: addresses.manager,
+      functionName: "claim",
+      args: [],
+    });
+  }
 
   useWatchContractEvent({
+    chainId: REQUIRED_CHAIN_ID,
     abi: raffleManagerAbi,
     address: addresses.manager,
     eventName: "Finalized",
@@ -267,8 +292,26 @@ export default function PlayPage() {
       <MoneyRain trigger={rainTrigger} />
 
       <div className="panel px-5 py-4 text-center marqueePanel">
-        <div className="h1">PLAY</div>
-        <div className="muted text-[10px] mt-2">TICKET = 10 USDC • WINNERS 50/30/10 • 10% TO STAKERS</div>
+        <div className="muted text-[10px]">
+          PLAY AT YOUR OWN RISK • TICKETS ARE NON-REFUNDABLE ONCE PURCHASED • ROUND ONLY COMPLETES WHEN ALL TICKETS ARE SOLD
+        </div>
+      </div>
+
+      {/* Claim panel */}
+      <div className="panel px-5 py-3 mt-4">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <div className="h2">CLAIMABLE USDC</div>
+            <div className="muted text-[10px] mt-1">{formatUnits(claimableAmt, USDC_DECIMALS)} USDC</div>
+          </div>
+
+          <button className="btn btnGold" onClick={claimFn} disabled={!address || wrongNetwork || !hasAddresses || isPending || claimableAmt === 0n}>
+            CLAIM
+          </button>
+        </div>
+        <div className="muted text-[10px] mt-2">
+          Winners are paid via claim. For Medium/Large/Mega, runner-ups may be assigned in batches after the round finalizes.
+        </div>
       </div>
 
       {!hasAddresses && (
@@ -317,6 +360,17 @@ export default function PlayPage() {
           onCoinInsert={() => {
             playCoinSound();
             setPulseLarge((n) => n + 1);
+          }}
+        />
+        <Pot
+          title="MEGA"
+          rType={3}
+          pulseToken={pulseMega}
+          wrongNetwork={wrongNetwork}
+          hasAddresses={hasAddresses}
+          onCoinInsert={() => {
+            playCoinSound();
+            setPulseMega((n) => n + 1);
           }}
         />
       </div>

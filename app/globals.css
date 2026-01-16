@@ -338,17 +338,26 @@ body > *{
 .pulse{ animation: potPulse 0.35s ease-out; }
 
 /* Desktop: keep ALL 3 on one line */
+/* ===== Pots layout: 2x2 ===== */
 .potRow{
-  display:flex;
-  justify-content:center;
-  gap:16px;
-  flex-wrap: nowrap;
-  align-items: flex-start;
+  display:grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
 }
 
 .potCard{
-  width: 300px;
+  width: 100%;
   padding: 12px;
+}
+
+@media (max-width: 820px){
+  .potRow{
+    grid-template-columns: 1fr;
+  }
+  .potCard{
+    width: 100%;
+  }
 }
 
 @media (max-width: 1040px){
