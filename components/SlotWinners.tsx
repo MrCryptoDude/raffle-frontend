@@ -3,25 +3,12 @@
 import * as React from "react";
 
 type SlotWinnersProps = {
-  // increment this when a Finalized event happens for this raffle type
+  // increment this when a Finalized event happens (or after a successful reveal)
   trigger: number;
 
-  // last winners (from getLastResult)
-  lastRoundId?: bigint;
-  w1?: `0x${string}`;
-  w2?: `0x${string}`;
-  w3?: `0x${string}`;
+  // optional label for the screen (e.g., "REVEAL COMPLETE", "ROUND FINALIZED")
+  label?: string;
 };
-
-function shortAddr(a?: `0x${string}`) {
-  if (!a) return "—";
-  return `${a.slice(0, 6)}…${a.slice(-4)}`;
-}
-
-function isZeroAddr(a?: `0x${string}`) {
-  if (!a) return true;
-  return a.toLowerCase() === "0x0000000000000000000000000000000000000000";
-}
 
 const SYMBOLS = ["₿", "Ξ", "◎", "⬡", "✦", "¤", "⟠", "⚡"];
 
@@ -47,30 +34,17 @@ function Reel({
   );
 }
 
-export function SlotWinners(props: SlotWinnersProps) {
-  const { trigger, lastRoundId, w1, w2, w3 } = props;
-
-  const hasWinners =
-    !isZeroAddr(w1) || !isZeroAddr(w2) || !isZeroAddr(w3);
-
-  // IMPORTANT:
-  // Reels should NOT stop just because "last result exists".
-  // They stop only for a few seconds after a Finalized trigger.
+export function SlotWinners({ trigger, label }: SlotWinnersProps) {
   const [locked, setLocked] = React.useState(false);
   const [blink, setBlink] = React.useState(false);
 
   React.useEffect(() => {
-    // On first page load trigger will be 0. Do nothing.
     if (trigger <= 0) return;
 
-    // Stop reels
     setLocked(true);
-
-    // Blink 3x (your CSS already handles the effect)
     setBlink(true);
-    const t1 = setTimeout(() => setBlink(false), 950);
 
-    // Resume spinning after a few seconds
+    const t1 = setTimeout(() => setBlink(false), 950);
     const t2 = setTimeout(() => setLocked(false), 4500);
 
     return () => {
@@ -87,16 +61,12 @@ export function SlotWinners(props: SlotWinnersProps) {
         <Reel locked={locked} alt2 />
       </div>
 
-      <div className={`winnersScreen ${hasWinners ? "winnersOn" : ""}`}>
-        <div className="wTitle">
-          {hasWinners
-            ? `WINNERS!${lastRoundId ? ` (R${lastRoundId.toString()})` : ""}`
-            : "WINNERS! (NOT DRAWN YET)"}
+      <div className="winnersScreen winnersOn">
+        <div className="wTitle">{label ?? "DRAW COMPLETE"}</div>
+        <div className="wLine">
+          Winners are published in <span className="font-semibold">History</span>.
         </div>
-
-        <div className="wLine">1) {shortAddr(!isZeroAddr(w1) ? w1 : undefined)}</div>
-        <div className="wLine">2) {shortAddr(!isZeroAddr(w2) ? w2 : undefined)}</div>
-        <div className="wLine">3) {shortAddr(!isZeroAddr(w3) ? w3 : undefined)}</div>
+        <div className="wLine">If you played, press REVEAL to settle and see if you won.</div>
       </div>
     </div>
   );
