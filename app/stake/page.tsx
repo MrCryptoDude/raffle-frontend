@@ -142,38 +142,6 @@ export default function StakePage() {
     query: { enabled: hasAddresses, refetchInterval: 2500 },
   });
 
-  const paidUsdcQ = useReadContract({
-    chainId: REQUIRED_CHAIN_ID,
-    abi: stakingAbi,
-    address: addresses.staking,
-    functionName: "totalCumulativeRewardsPaid",
-    query: { enabled: hasAddresses, refetchInterval: 4000 },
-  });
-
-  const paidBrrrQ = useReadContract({
-    chainId: REQUIRED_CHAIN_ID,
-    abi: stakingAbi,
-    address: addresses.staking,
-    functionName: "totalCumulativeRewardsPaidBRRR",
-    query: { enabled: hasAddresses, refetchInterval: 4000 },
-  });
-
-  const notifiedUsdcQ = useReadContract({
-    chainId: REQUIRED_CHAIN_ID,
-    abi: stakingAbi,
-    address: addresses.staking,
-    functionName: "totalCumulativeRewardsNotifiedUSDC",
-    query: { enabled: hasAddresses, refetchInterval: 4000 },
-  });
-
-  const notifiedBrrrQ = useReadContract({
-    chainId: REQUIRED_CHAIN_ID,
-    abi: stakingAbi,
-    address: addresses.staking,
-    functionName: "totalCumulativeRewardsNotifiedBRRR",
-    query: { enabled: hasAddresses, refetchInterval: 4000 },
-  });
-
   const totalStakedQ = useReadContract({
     chainId: REQUIRED_CHAIN_ID,
     abi: erc20Abi,
@@ -455,11 +423,6 @@ export default function StakePage() {
             <div className="h2">{fmt(queuedUsdcQ.data, USDC_DECIMALS)} USDC</div>
           </div>
 
-          <div className="mt-3 inset statBox">
-            <div className="muted tiny">TOTAL REVENUE NOTIFIED (USDC)</div>
-            <div className="h2">{fmt(notifiedUsdcQ.data, USDC_DECIMALS)} USDC</div>
-          </div>
-
           <div className="mt-5 inset statBox">
             <div className="muted tiny">CURRENT 24H STREAM (BRRR)</div>
             <div className="h2">{fmt(epochRewardBrrrQ.data, RAFFLE_DECIMALS)} BRRR</div>
@@ -480,10 +443,6 @@ export default function StakePage() {
             <div className="h2">{fmt(queuedBrrrQ.data, RAFFLE_DECIMALS)} BRRR</div>
           </div>
 
-          <div className="mt-3 inset statBox">
-            <div className="muted tiny">TOTAL REVENUE NOTIFIED (BRRR)</div>
-            <div className="h2">{fmt(notifiedBrrrQ.data, RAFFLE_DECIMALS)} BRRR</div>
-          </div>
         </div>
 
         <div className="panel potCard cabinetPot">
@@ -527,16 +486,6 @@ export default function StakePage() {
           <div className="mt-3 inset statBox">
             <div className="muted tiny">365D APR (USD EST.)</div>
             <div className="h2">{apr365Usd === null ? "—" : `${apr365Usd.toFixed(2)}%`}</div>
-          </div>
-
-          <div className="mt-3 inset statBox">
-            <div className="muted tiny">TOTAL PAID (USDC)</div>
-            <div className="h2">{fmt(paidUsdcQ.data, USDC_DECIMALS)} USDC</div>
-          </div>
-
-          <div className="mt-3 inset statBox">
-            <div className="muted tiny">TOTAL PAID (BRRR)</div>
-            <div className="h2">{fmt(paidBrrrQ.data, RAFFLE_DECIMALS)} BRRR</div>
           </div>
         </div>
       </div>
