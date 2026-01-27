@@ -146,7 +146,7 @@ export default function StakePage() {
     chainId: REQUIRED_CHAIN_ID,
     abi: stakingAbi,
     address: addresses.staking,
-    functionName: "totalCumulativeRewardsPaidUSDC",
+    functionName: "totalCumulativeRewardsPaid",
     query: { enabled: hasAddresses, refetchInterval: 4000 },
   });
 
