@@ -134,7 +134,7 @@ body > *{
 .btnGold{ border-color: rgba(180,255,125,0.92); background: rgba(180,255,125,0.12); }
 
 .input{
-  width:100%;
+  width:95%;
   border: 3px solid var(--border2);
   background: rgba(0,0,0,0.34);
   padding: 10px 12px;
@@ -198,10 +198,11 @@ body > *{
   min-width: 0;
 }
 .headerMid{
-  display:flex;
-  justify-content:center;
-  gap: 10px;
-  flex-wrap: wrap;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 12px;
 }
 .headerRight{
   display:flex;
@@ -347,7 +348,7 @@ body > *{
 }
 
 .potCard{
-  width: 100%;
+  width: 94.5%;
   padding: 12px;
 }
 

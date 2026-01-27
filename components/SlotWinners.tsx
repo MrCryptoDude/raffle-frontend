@@ -60,14 +60,6 @@ export function SlotWinners({ trigger, label }: SlotWinnersProps) {
         <Reel locked={locked} alt />
         <Reel locked={locked} alt2 />
       </div>
-
-      <div className="winnersScreen winnersOn">
-        <div className="wTitle">{label ?? "DRAW COMPLETE"}</div>
-        <div className="wLine">
-          Winners are published in <span className="font-semibold">History</span>.
-        </div>
-        <div className="wLine">If you played, press REVEAL to settle and see if you won.</div>
-      </div>
     </div>
   );
 }

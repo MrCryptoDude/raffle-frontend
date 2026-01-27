@@ -34,6 +34,7 @@ type PotProps = {
   slotTrigger: number;
 };
 
+
 function isAddress(x: unknown): x is `0x${string}` {
   return typeof x === "string" && /^0x[a-fA-F0-9]{40}$/.test(x);
 }
@@ -296,6 +297,8 @@ export default function PlayPage() {
   const [slotTrigLarge, setSlotTrigLarge] = React.useState(0);
   const [slotTrigMega, setSlotTrigMega] = React.useState(0);
 
+  
+
   // Local tx state for reveal/claim
   const [revealPending, setRevealPending] = React.useState(false);
   const [claimPending, setClaimPending] = React.useState(false);
@@ -357,16 +360,28 @@ export default function PlayPage() {
     query: { enabled: !!address && hasAddresses, refetchInterval: 2000 },
   });
 
-  function firstRevealType(): 0 | 1 | 2 | 3 | null {
-    if (rev0?.[0]) return 0;
-    if (rev1?.[0]) return 1;
-    if (rev2?.[0]) return 2;
-    if (rev3?.[0]) return 3;
-    return null;
+  type RevealInfo = {
+    enabled: boolean;
+    roundId: bigint;
+  };
+
+  function toRevealInfo(x: any): RevealInfo {
+    return{
+      enabled: Boolean(x?.[0]),
+      roundId: (x?.[1] as bigint) ?? 0n,
+    };
   }
 
-  const revealType = firstRevealType();
-  const revealEnabled = revealType !== null;
+  const r0 = toRevealInfo(rev0);
+  const r1 = toRevealInfo(rev1);
+  const r2 = toRevealInfo(rev2);
+  const r3 = toRevealInfo(rev3);
+
+  const anyRevealEnabled = r0.enabled || r1.enabled || r2.enabled || r3.enabled;
+
+  function typeLabel(t: 0 | 1 | 2 | 3) {
+    return t === 0 ? "SMALL" : t === 1 ? "MEDIUM" : t === 2 ? "LARGE" : "MEGA";
+  }
 
   // Reveal modal state
   const [revealOpen, setRevealOpen] = React.useState(false);
@@ -385,9 +400,14 @@ export default function PlayPage() {
     setRevealError(null);
   }, [address]);
 
-  async function revealFn() {
+  async function revealFn(rType: 0 | 1 | 2 | 3) {
     if (!address || wrongNetwork || !hasAddresses) return;
-    if (revealType === null) return;
+
+  // guard: ensure this type is actually revealable right now
+    const info =
+      rType === 0 ? r0 : rType === 1 ? r1 : rType === 2 ? r2 : r3;
+
+    if (!info.enabled) return;
 
     const before = winningsAmt;
     setWBefore(before);
@@ -408,17 +428,18 @@ export default function PlayPage() {
         abi: raffleManagerAbi,
         address: addresses.manager,
         functionName: "reveal",
-        args: [revealType],
+        args: [rType],
       });
 
       setRevealStage("done");
     } catch (e: any) {
-      setRevealStage("error");
-      setRevealError(e?.shortMessage || e?.message || "Reveal failed");
+     setRevealStage("error");
+     setRevealError(e?.shortMessage || e?.message || "Reveal failed");
     } finally {
-      setRevealPending(false);
-    }
+     setRevealPending(false);
+   }
   }
+
 
   React.useEffect(() => {
     if (!revealOpen) return;
@@ -508,22 +529,49 @@ export default function PlayPage() {
               </div>
             )}
           </div>
+        </div>
 
-          <div className="flex gap-2">
-            <button
-              className="btn btnMint"
-              onClick={revealFn}
-              disabled={
-                !address ||
-                wrongNetwork ||
-                !hasAddresses ||
-                revealPending ||
-                claimPending ||
-                !revealEnabled
-              }
-            >
-              {revealPending ? "REVEALING..." : "REVEAL"}
-            </button>
+          <div className="flex gap-2 flex-wrap justify-end">
+            {/* Reveal buttons per type (show only those that are currently revealable) */}
+            {(
+              [
+                [0, r0],
+                [1, r1],
+                [2, r2],
+                [3, r3],
+              ] as const
+            )
+              .filter(([, info]) => info.enabled)
+              .map(([t, info]) => (
+                <button
+                  key={t}
+                  className="btn btnMint"
+                  onClick={() => revealFn(t)}
+                  disabled={
+                    !address ||
+                    wrongNetwork ||
+                    !hasAddresses ||
+                    revealPending ||
+                    claimPending
+                  }
+                  title={`Reveal ${typeLabel(t)} round ${info.roundId.toString()}`}
+                >
+                  {revealPending
+                    ? "REVEALING..."
+                    : `REVEAL ${typeLabel(t)} R${info.roundId.toString()}`}
+                </button>
+              ))}
+
+            {/* If nothing is revealable, show a disabled hint button to reduce confusion */}
+            {!anyRevealEnabled && (
+              <button
+                className="btn btnMint"
+                disabled
+                title="No revealable rounds right now"
+              >
+                REVEAL (NONE)
+              </button>
+            )}
 
             <button
               className="btn btnGold"
@@ -540,10 +588,10 @@ export default function PlayPage() {
               {claimPending ? "CLAIMING..." : "CLAIM"}
             </button>
           </div>
-        </div>
+
 
         <div className="muted text-[10px] mt-2">
-          Reveal is only enabled if you participated in a round that is ready to settle. Claim transfers credited winnings + refunds.
+          Reveal shows only the next revealable round per raffle type (if you participated). Multiple types can be pending. Claim transfers your aggregated winnings + refunds.
         </div>
       </div>
 

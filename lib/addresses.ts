@@ -4,6 +4,7 @@ export const addresses = {
   staking: process.env.NEXT_PUBLIC_STAKING as `0x${string}`,
   raffle: process.env.NEXT_PUBLIC_RAFFLE as `0x${string}`,
   rps: process.env.NEXT_PUBLIC_RPS as `0x${string}`,
+  vrfAdapter: process.env.NEXT_PUBLIC_VRF_ADAPTER as `0x${string}`,
 };
 
 export const REQUIRED_CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 84532);

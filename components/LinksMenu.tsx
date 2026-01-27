@@ -11,11 +11,18 @@ type Item = {
 
 const ITEMS: Item[] = [
   { label: "Home", href: "/" },
-  { label: "Collection", href: "https://magiceden.io/ordinals/marketplace/ordinalprinters", external: true },
+  { label: "Play", href: "/play" },
+  { label: "History", href: "/history" },
+  { label: "RPS", href: "/rps" },
+  {
+    label: "Collection",
+    href: "https://magiceden.io/ordinals/marketplace/ordinalprinters",
+    external: true,
+  },
   { label: "Discord", href: "https://discord.gg/WabmjKKx56", external: true },
   { label: "X", href: "https://x.com/OrdinalPrinter", external: true },
-  { label: "RPS", href: "/rps"},
 ];
+
 
 export function LinksMenu() {
   const [open, setOpen] = React.useState(false);

@@ -42,7 +42,6 @@ export const raffleManagerAbi = [
     ],
     outputs: [],
   },
-
   {
     type: "function",
     name: "getRoundInfo",
@@ -84,7 +83,7 @@ export const raffleManagerAbi = [
   },
 
   // -------------------------
-  // Reveal (participant-only settlement trigger)
+  // Reveal
   // -------------------------
   {
     type: "function",
@@ -142,7 +141,7 @@ export const raffleManagerAbi = [
   },
 
   // -------------------------
-  // Events (must match contract exactly)
+  // Events
   // -------------------------
   {
     type: "event",
@@ -176,131 +175,134 @@ export const raffleManagerAbi = [
   },
 ] as const;
 
+/**
+ * Dual-stream StakingRewards ABI (USDC + BRRR)
+ * Keep this aligned with src/StakingRewards.sol (Option B, per-token distributors).
+ */
 export const stakingAbi = [
+  // write
   { type: "function", name: "stake", stateMutability: "nonpayable", inputs: [{ name: "amount", type: "uint256" }], outputs: [] },
   { type: "function", name: "withdraw", stateMutability: "nonpayable", inputs: [{ name: "amount", type: "uint256" }], outputs: [] },
   { type: "function", name: "claim", stateMutability: "nonpayable", inputs: [], outputs: [] },
-
-  { type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ name: "account", type: "address" }], outputs: [{ name: "", type: "uint256" }] },
-  { type: "function", name: "earned", stateMutability: "view", inputs: [{ name: "account", type: "address" }], outputs: [{ name: "", type: "uint256" }] },
-
-  { type: "function", name: "queuedRewards", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
-  { type: "function", name: "pendingNextEpochRewards", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
-  { type: "function", name: "getRewardForCurrentEpoch", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
-  { type: "function", name: "epochEndsAt", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
-
-  { type: "function", name: "totalCumulativeRewardsNotified", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
-  { type: "function", name: "totalCumulativeRewardsPaid", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
-
-  { type: "function", name: "totalSupply", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
-  { type: "function", name: "periodFinish", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
-  { type: "function", name: "rewardRate", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
-
   { type: "function", name: "rollEpochIfReady", stateMutability: "nonpayable", inputs: [], outputs: [] },
+
+  // views (stake balances)
+  { type: "function", name: "totalSupply", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ name: "account", type: "address" }], outputs: [{ name: "", type: "uint256" }] },
+
+  // views (earned)
+  { type: "function", name: "earnedUSDC", stateMutability: "view", inputs: [{ name: "account", type: "address" }], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "earnedBRRR", stateMutability: "view", inputs: [{ name: "account", type: "address" }], outputs: [{ name: "", type: "uint256" }] },
+
+  // epoch helpers
+  { type: "function", name: "epochEndsAtUSDC", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "epochEndsAtBRRR", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "getRewardForCurrentEpochUSDC", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "getRewardForCurrentEpochBRRR", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+
+  // queued/pending
+  { type: "function", name: "queuedRewardsUSDC", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "pendingNextEpochRewardsUSDC", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "queuedRewardsBRRR", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "pendingNextEpochRewardsBRRR", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+
+  // distributors (useful for sanity checks)
+  { type: "function", name: "rewardsDistributorUSDC", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "rewardsDistributorBRRR", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
 ] as const;
 
-// rpsAbi unchanged (keep yours)
-export const rpsAbi = [
+/**
+ * RpsManager ABI (the one you deployed on Base Sepolia)
+ * Matches forge inspect output: play(uint256,uint8) returns (uint256) and settle(uint256)
+ * plus GameStarted / GameResolved events.
+ */
+export const rpsManagerAbi = [
+  // constants/views
+  { type: "function", name: "brrr", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "staking", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "MIN_BET", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "MAX_BET", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "FEE_BPS", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "gameCount", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+
+  // games(uint256) view returns (...)
   {
     type: "function",
-    name: "commit",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "betIndex", type: "uint8" },
-      { name: "commitment", type: "bytes32" },
-    ],
+    name: "games",
+    stateMutability: "view",
+    inputs: [{ name: "", type: "uint256" }],
     outputs: [
-      { name: "matchId", type: "uint256" },
-      { name: "matchedNow", type: "bool" },
+      { name: "player", type: "address" },
+      { name: "bet", type: "uint256" },
+      { name: "playerMove", type: "uint8" },
+      { name: "houseMove", type: "uint8" },
+      { name: "requestId", type: "uint256" },
+      { name: "outcome", type: "uint8" },
+      { name: "createdAt", type: "uint40" },
+      { name: "resolvedAt", type: "uint40" },
+      { name: "settled", type: "bool" },
     ],
   },
-  { type: "function", name: "cancel", stateMutability: "nonpayable", inputs: [{ name: "matchId", type: "uint256" }], outputs: [] },
+
+  // actions
   {
     type: "function",
-    name: "reveal",
+    name: "play",
     stateMutability: "nonpayable",
     inputs: [
-      { name: "matchId", type: "uint256" },
-      { name: "choice", type: "uint8" },
-      { name: "salt", type: "bytes32" },
+      { name: "betAmount", type: "uint256" },
+      { name: "playerMover", type: "uint8" },
     ],
+    outputs: [{ name: "gameId", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "settle",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "gameId", type: "uint256" }],
     outputs: [],
   },
-  { type: "function", name: "claimTimeout", stateMutability: "nonpayable", inputs: [{ name: "matchId", type: "uint256" }], outputs: [] },
-  {
-    type: "function",
-    name: "getMatch",
-    stateMutability: "view",
-    inputs: [{ name: "matchId", type: "uint256" }],
-    outputs: [
-      {
-        name: "",
-        type: "tuple",
-        components: [
-          { name: "id", type: "uint256" },
-          { name: "betIndex", type: "uint8" },
-          { name: "betAmount", type: "uint256" },
-          { name: "p1", type: "address" },
-          { name: "p2", type: "address" },
-          { name: "c1", type: "bytes32" },
-          { name: "c2", type: "bytes32" },
-          { name: "r1", type: "uint8" },
-          { name: "r2", type: "uint8" },
-          { name: "revealed1", type: "bool" },
-          { name: "revealed2", type: "bool" },
-          { name: "createdAt", type: "uint256" },
-          { name: "status", type: "uint8" },
-        ],
-      },
-    ],
-  },
-  { type: "function", name: "BETS", stateMutability: "view", inputs: [{ name: "", type: "uint256" }], outputs: [{ name: "", type: "uint256" }] },
-  { type: "function", name: "waitingMatch", stateMutability: "view", inputs: [{ name: "betIndex", type: "uint8" }], outputs: [{ name: "", type: "uint256" }] },
 
+  // events (names must match exactly)
   {
     type: "event",
-    name: "Committed",
+    name: "GameStarted",
     inputs: [
-      { name: "matchId", type: "uint256", indexed: true },
-      { name: "betIndex", type: "uint8", indexed: true },
+      { name: "gameId", type: "uint256", indexed: true },
       { name: "player", type: "address", indexed: true },
+      { name: "bet", type: "uint256", indexed: false },
+      { name: "playerMove", type: "uint8", indexed: false },
+      { name: "requestId", type: "uint256", indexed: false },
     ],
     anonymous: false,
   },
   {
     type: "event",
-    name: "Matched",
+    name: "GameResolved",
     inputs: [
-      { name: "matchId", type: "uint256", indexed: true },
-      { name: "betIndex", type: "uint8", indexed: true },
-      { name: "p1", type: "address", indexed: false },
-      { name: "p2", type: "address", indexed: false },
-      { name: "betAmount", type: "uint256", indexed: false },
-    ],
-    anonymous: false,
-  },
-  {
-    type: "event",
-    name: "Finalized",
-    inputs: [
-      { name: "matchId", type: "uint256", indexed: true },
-      { name: "winner", type: "address", indexed: false },
-      { name: "tie", type: "bool", indexed: false },
-      { name: "payoutWinner", type: "uint256", indexed: false },
-      { name: "payoutLoser", type: "uint256", indexed: false },
-      { name: "feeToStakers", type: "uint256", indexed: false },
-    ],
-    anonymous: false,
-  },
-  {
-    type: "event",
-    name: "TimeoutClaimed",
-    inputs: [
-      { name: "matchId", type: "uint256", indexed: true },
-      { name: "winner", type: "address", indexed: false },
-      { name: "payoutWinner", type: "uint256", indexed: false },
-      { name: "feeToStakers", type: "uint256", indexed: false },
+      { name: "gameId", type: "uint256", indexed: true },
+      { name: "player", type: "address", indexed: true },
+      { name: "playerMove", type: "uint8", indexed: false },
+      { name: "houseMove", type: "uint8", indexed: false },
+      { name: "outcome", type: "uint8", indexed: false },
+      { name: "bet", type: "uint256", indexed: false },
+      { name: "fee", type: "uint256", indexed: false },
+      { name: "payoutToPlayer", type: "uint256", indexed: false },
     ],
     anonymous: false,
   },
 ] as const;
+
+export const vrfAdapterAbi = [
+  {
+    type: "function",
+    name: "getRandom",
+    stateMutability: "view",
+    inputs: [{ name: "requestId", type: "uint256" }],
+    outputs: [
+      { name: "ok", type: "bool" },
+      { name: "word", type: "uint256" },
+    ],
+  },
+] as const;
+

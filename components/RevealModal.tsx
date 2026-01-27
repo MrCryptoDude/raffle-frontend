@@ -7,6 +7,91 @@ import { RevealSlot } from "./RevealSlot";
 
 type Stage = "idle" | "spinning" | "mining" | "done" | "error";
 
+function DecryptLine({
+  text,
+  active,
+  speedMs = 22,
+}: {
+  text: string;
+  active: boolean;
+  speedMs?: number;
+}) {
+  const [out, setOut] = React.useState(text);
+
+  React.useEffect(() => {
+    if (!active) {
+      setOut(text);
+      return;
+    }
+
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#$%*+?";
+    let i = 0;
+
+    const tick = () => {
+      // progressively "locks in" the real text from left to right
+      const locked = text.slice(0, i);
+      const restLen = Math.max(0, text.length - i);
+
+      const scrambled =
+        locked +
+        Array.from({ length: restLen })
+          .map(() => chars[Math.floor(Math.random() * chars.length)])
+          .join("");
+
+      setOut(scrambled);
+      i = Math.min(text.length, i + 1);
+    };
+
+    tick();
+    const t = setInterval(tick, speedMs);
+
+    return () => clearInterval(t);
+  }, [text, active, speedMs]);
+
+  return (
+    <div
+      style={{
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+        letterSpacing: 1,
+      }}
+      className="muted text-[10px]"
+    >
+      {out}
+    </div>
+  );
+}
+
+function ScanBar({ active }: { active: boolean }) {
+  return (
+    <div
+      style={{
+        position: "relative",
+        height: 10,
+        borderRadius: 999,
+        overflow: "hidden",
+        background: "rgba(255,255,255,0.06)",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          bottom: 0,
+          width: "35%",
+          transform: active ? "translateX(185%)" : "translateX(-10%)",
+          transition: active ? "transform 900ms linear" : "none",
+          background: "rgba(255,255,255,0.18)",
+          filter: "blur(0.2px)",
+        }}
+      />
+    </div>
+  );
+}
+
+
+
+
+
 export function RevealModal({
   open,
   stage,
@@ -47,21 +132,24 @@ export function RevealModal({
           <div className="mt-2">
             {stage === "spinning" && (
               <>
-                <div className="muted text-[10px]">SPINNING…</div>
+                <DecryptLine text="DECRYPTING ROUND RESULT…" active />
                 <div className="mt-2">
-                  <RevealSlot spinning />
+                  <ScanBar active />
+                </div>
+                <div className="mt-2">
+                  <DecryptLine text="DERIVING SETTLEMENT PROOF…" active />
                 </div>
               </>
             )}
 
             {stage === "mining" && (
               <>
-                <div className="muted text-[10px]">CONFIRM IN WALLET…</div>
-                <div className="muted text-[10px] mt-1">
-                  WAITING FOR TX CONFIRMATION…
+                <DecryptLine text="CONFIRM IN WALLET…" active />
+                <div className="mt-2">
+                  <ScanBar active />
                 </div>
                 <div className="mt-2">
-                  <RevealSlot spinning />
+                  <DecryptLine text="WAITING FOR TX CONFIRMATION…" active />
                 </div>
               </>
             )}
@@ -91,9 +179,7 @@ export function RevealModal({
           </div>
         </div>
 
-        <div className="mt-4 muted text-[10px]">
-          Reveal is only enabled if you participated and the VRF word is ready for settlement.
-        </div>
+        
       </div>
     </div>
   );
