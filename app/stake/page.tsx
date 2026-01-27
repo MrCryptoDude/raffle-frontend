@@ -39,6 +39,7 @@ export default function StakePage() {
   const addr0 = "0x0000000000000000000000000000000000000000" as const;
   const user = (address ?? addr0) as `0x${string}`;
 
+  // ---------- Reads ----------
   const raffleBalQ = useReadContract({
     chainId: REQUIRED_CHAIN_ID,
     abi: erc20Abi,
@@ -57,60 +58,119 @@ export default function StakePage() {
     query: { enabled: !!address && hasAddresses, refetchInterval: 2500 },
   });
 
-  const earnedQ = useReadContract({
+  // ✅ Fix: split earned by token (matches stakingAbi typings)
+  const earnedUsdcQ = useReadContract({
     chainId: REQUIRED_CHAIN_ID,
     abi: stakingAbi,
     address: addresses.staking,
-    functionName: "earned",
+    functionName: "earnedUSDC",
     args: [user],
     query: { enabled: !!address && hasAddresses, refetchInterval: 2500 },
   });
 
-  const queuedQ = useReadContract({
+  const earnedBrrrQ = useReadContract({
     chainId: REQUIRED_CHAIN_ID,
     abi: stakingAbi,
     address: addresses.staking,
-    functionName: "queuedRewards",
+    functionName: "earnedBRRR",
+    args: [user],
+    query: { enabled: !!address && hasAddresses, refetchInterval: 2500 },
+  });
+
+  // ✅ Fix: suffix reads with USDC/BRRR (matches stakingAbi typings)
+  const queuedUsdcQ = useReadContract({
+    chainId: REQUIRED_CHAIN_ID,
+    abi: stakingAbi,
+    address: addresses.staking,
+    functionName: "queuedRewardsUSDC",
     query: { enabled: hasAddresses, refetchInterval: 2500 },
   });
 
-  const pendingNextQ = useReadContract({
+  const queuedBrrrQ = useReadContract({
     chainId: REQUIRED_CHAIN_ID,
     abi: stakingAbi,
     address: addresses.staking,
-    functionName: "pendingNextEpochRewards",
+    functionName: "queuedRewardsBRRR",
     query: { enabled: hasAddresses, refetchInterval: 2500 },
   });
 
-  const epochRewardQ = useReadContract({
+  const pendingNextUsdcQ = useReadContract({
     chainId: REQUIRED_CHAIN_ID,
     abi: stakingAbi,
     address: addresses.staking,
-    functionName: "getRewardForCurrentEpoch",
+    functionName: "pendingNextEpochRewardsUSDC",
     query: { enabled: hasAddresses, refetchInterval: 2500 },
   });
 
-  const epochEndsQ = useReadContract({
+  const pendingNextBrrrQ = useReadContract({
     chainId: REQUIRED_CHAIN_ID,
     abi: stakingAbi,
     address: addresses.staking,
-    functionName: "epochEndsAt",
+    functionName: "pendingNextEpochRewardsBRRR",
     query: { enabled: hasAddresses, refetchInterval: 2500 },
   });
 
-  const paidQ = useReadContract({
+  const epochRewardUsdcQ = useReadContract({
     chainId: REQUIRED_CHAIN_ID,
     abi: stakingAbi,
     address: addresses.staking,
-    functionName: "totalCumulativeRewardsPaid",
+    functionName: "getRewardForCurrentEpochUSDC",
+    query: { enabled: hasAddresses, refetchInterval: 2500 },
+  });
+
+  const epochRewardBrrrQ = useReadContract({
+    chainId: REQUIRED_CHAIN_ID,
+    abi: stakingAbi,
+    address: addresses.staking,
+    functionName: "getRewardForCurrentEpochBRRR",
+    query: { enabled: hasAddresses, refetchInterval: 2500 },
+  });
+
+  const epochEndsUsdcQ = useReadContract({
+    chainId: REQUIRED_CHAIN_ID,
+    abi: stakingAbi,
+    address: addresses.staking,
+    functionName: "epochEndsAtUSDC",
+    query: { enabled: hasAddresses, refetchInterval: 2500 },
+  });
+
+  const epochEndsBrrrQ = useReadContract({
+    chainId: REQUIRED_CHAIN_ID,
+    abi: stakingAbi,
+    address: addresses.staking,
+    functionName: "epochEndsAtBRRR",
+    query: { enabled: hasAddresses, refetchInterval: 2500 },
+  });
+
+  const paidUsdcQ = useReadContract({
+    chainId: REQUIRED_CHAIN_ID,
+    abi: stakingAbi,
+    address: addresses.staking,
+    functionName: "totalCumulativeRewardsPaidUSDC",
     query: { enabled: hasAddresses, refetchInterval: 4000 },
   });
 
-  const notifiedQ = useReadContract({
+  const paidBrrrQ = useReadContract({
     chainId: REQUIRED_CHAIN_ID,
     abi: stakingAbi,
     address: addresses.staking,
-    functionName: "totalCumulativeRewardsNotified",
+    functionName: "totalCumulativeRewardsPaidBRRR",
+    query: { enabled: hasAddresses, refetchInterval: 4000 },
+  });
+
+  const notifiedUsdcQ = useReadContract({
+    chainId: REQUIRED_CHAIN_ID,
+    abi: stakingAbi,
+    address: addresses.staking,
+    functionName: "totalCumulativeRewardsNotifiedUSDC",
+    query: { enabled: hasAddresses, refetchInterval: 4000 },
+  });
+
+  const notifiedBrrrQ = useReadContract({
+    chainId: REQUIRED_CHAIN_ID,
+    abi: stakingAbi,
+    address: addresses.staking,
+    functionName: "totalCumulativeRewardsNotifiedBRRR",
     query: { enabled: hasAddresses, refetchInterval: 4000 },
   });
 
@@ -132,24 +192,42 @@ export default function StakePage() {
     query: { enabled: !!address && hasAddresses, refetchInterval: 2500 },
   });
 
+  // ---------- Derived ----------
   const stakedBal = stakedBalQ.data ?? 0n;
-  const amountWei = parseUnits(amount === "" ? "0" : amount, RAFFLE_DECIMALS);
+
+  const amountWei = React.useMemo(() => {
+    try {
+      return parseUnits(amount === "" ? "0" : amount, RAFFLE_DECIMALS);
+    } catch {
+      return 0n;
+    }
+  }, [amount]);
+
   const allowance = allowanceQ.data ?? 0n;
 
   const needsApprove = !!address && amountWei > 0n && allowance < amountWei;
   const withdrawInvalid = !address || amountWei === 0n || amountWei > stakedBal;
 
-  const totalStaked = totalStakedQ.data ?? 0n; // BRRR
-  const epochReward = epochRewardQ.data ?? 0n; // USDC
+  const totalStaked = totalStakedQ.data ?? 0n; // BRRR (18d)
+  const epochRewardUsdc = epochRewardUsdcQ.data ?? 0n; // USDC (6d)
+  const epochRewardBrrr = epochRewardBrrrQ.data ?? 0n; // BRRR (18d)
 
   // Metrics (BigInt-safe)
   const SCALE = 10n ** 18n;
   const usdcFactor = 10n ** BigInt(USDC_DECIMALS);
   const raffleFactor = 10n ** BigInt(RAFFLE_DECIMALS);
 
+  // USDC per BRRR per 24h
   const usdcPerBrrrPerDayScaled =
-    totalStaked > 0n ? (epochReward * raffleFactor * SCALE) / (totalStaked * usdcFactor) : 0n;
+    totalStaked > 0n
+      ? (epochRewardUsdc * raffleFactor * SCALE) / (totalStaked * usdcFactor)
+      : 0n;
   const usdcPerBrrrPerDay = Number(usdcPerBrrrPerDayScaled) / Number(SCALE);
+
+  // BRRR per BRRR per 24h (dimensionless, but useful)
+  const brrrPerBrrrPerDayScaled =
+    totalStaked > 0n ? (epochRewardBrrr * SCALE) / totalStaked : 0n;
+  const brrrPerBrrrPerDay = Number(brrrPerBrrrPerDayScaled) / Number(SCALE);
 
   let apr24hUsd: number | null = null;
   let apr365Usd: number | null = null;
@@ -165,10 +243,10 @@ export default function StakePage() {
   }
 
   if (priceScaled && totalStaked > 0n) {
-    const stakedValueUsdcScaled = (totalStaked * priceScaled) / raffleFactor;
+    const stakedValueUsdcScaled = (totalStaked * priceScaled) / raffleFactor; // 1e18
     if (stakedValueUsdcScaled > 0n) {
-      const epochRewardScaledTo1e18 = (epochReward * SCALE) / usdcFactor;
-      const dailyRateScaled = (epochRewardScaledTo1e18 * SCALE) / stakedValueUsdcScaled;
+      const epochRewardScaledTo1e18 = (epochRewardUsdc * SCALE) / usdcFactor; // 1e18
+      const dailyRateScaled = (epochRewardScaledTo1e18 * SCALE) / stakedValueUsdcScaled; // 1e18
       const dailyRate = Number(dailyRateScaled) / Number(SCALE);
 
       if (Number.isFinite(dailyRate)) {
@@ -178,9 +256,14 @@ export default function StakePage() {
     }
   }
 
-  const epochEnds =
-    epochEndsQ.data && epochEndsQ.data > 0n
-      ? new Date(Number(epochEndsQ.data) * 1000).toLocaleString()
+  const epochEndsUsdc =
+    epochEndsUsdcQ.data && epochEndsUsdcQ.data > 0n
+      ? new Date(Number(epochEndsUsdcQ.data) * 1000).toLocaleString()
+      : "—";
+
+  const epochEndsBrrr =
+    epochEndsBrrrQ.data && epochEndsBrrrQ.data > 0n
+      ? new Date(Number(epochEndsBrrrQ.data) * 1000).toLocaleString()
       : "—";
 
   async function tx(label: string, fn: () => Promise<unknown>) {
@@ -272,14 +355,18 @@ export default function StakePage() {
       {!hasAddresses && (
         <div className="panel px-5 py-3 text-center mt-4">
           <div className="danger tiny">CONFIG ERROR</div>
-          <div className="muted tiny mt-1">Missing NEXT_PUBLIC_RAFFLE / NEXT_PUBLIC_STAKING (or invalid addresses).</div>
+          <div className="muted tiny mt-1">
+            Missing NEXT_PUBLIC_RAFFLE / NEXT_PUBLIC_STAKING (or invalid addresses).
+          </div>
         </div>
       )}
 
       {wrongNetwork && (
         <div className="panel px-5 py-3 text-center mt-4">
           <div className="danger tiny">WRONG NETWORK</div>
-          <div className="muted tiny mt-1">Switch to Base Sepolia (Chain ID {REQUIRED_CHAIN_ID}) to use staking.</div>
+          <div className="muted tiny mt-1">
+            Switch to Base Sepolia (Chain ID {REQUIRED_CHAIN_ID}) to use staking.
+          </div>
         </div>
       )}
 
@@ -299,7 +386,12 @@ export default function StakePage() {
 
           <div className="mt-3 inset statBox">
             <div className="muted tiny">EARNED (USDC)</div>
-            <div className="h2">{fmt(earnedQ.data, USDC_DECIMALS)}</div>
+            <div className="h2">{fmt(earnedUsdcQ.data, USDC_DECIMALS)}</div>
+          </div>
+
+          <div className="mt-3 inset statBox">
+            <div className="muted tiny">EARNED (BRRR)</div>
+            <div className="h2">{fmt(earnedBrrrQ.data, RAFFLE_DECIMALS)}</div>
           </div>
 
           <div className="mt-3">
@@ -319,7 +411,11 @@ export default function StakePage() {
             <button className="btn btnMint flex-1" onClick={approve} disabled={!writesEnabled || amountWei === 0n}>
               APPROVE
             </button>
-            <button className="btn btnGold flex-1" onClick={stake} disabled={!writesEnabled || needsApprove || amountWei === 0n}>
+            <button
+              className="btn btnGold flex-1"
+              onClick={stake}
+              disabled={!writesEnabled || needsApprove || amountWei === 0n}
+            >
               STAKE
             </button>
           </div>
@@ -340,28 +436,53 @@ export default function StakePage() {
           <div className="h2">REWARDS</div>
 
           <div className="mt-3 inset statBox">
-            <div className="muted tiny">CURRENT 24H STREAM</div>
-            <div className="h2">{fmt(epochRewardQ.data, USDC_DECIMALS)} USDC</div>
+            <div className="muted tiny">CURRENT 24H STREAM (USDC)</div>
+            <div className="h2">{fmt(epochRewardUsdcQ.data, USDC_DECIMALS)} USDC</div>
           </div>
 
           <div className="mt-3 inset statBox">
-            <div className="muted tiny">EPOCH ENDS</div>
-            <div className="muted tiny">{epochEnds}</div>
+            <div className="muted tiny">EPOCH ENDS (USDC)</div>
+            <div className="muted tiny">{epochEndsUsdc}</div>
           </div>
 
           <div className="mt-3 inset statBox">
-            <div className="muted tiny">PENDING NEXT EPOCH</div>
-            <div className="h2">{fmt(pendingNextQ.data, USDC_DECIMALS)} USDC</div>
+            <div className="muted tiny">PENDING NEXT EPOCH (USDC)</div>
+            <div className="h2">{fmt(pendingNextUsdcQ.data, USDC_DECIMALS)} USDC</div>
           </div>
 
           <div className="mt-3 inset statBox">
-            <div className="muted tiny">QUEUED (NO STAKERS)</div>
-            <div className="h2">{fmt(queuedQ.data, USDC_DECIMALS)} USDC</div>
+            <div className="muted tiny">QUEUED (NO STAKERS) (USDC)</div>
+            <div className="h2">{fmt(queuedUsdcQ.data, USDC_DECIMALS)} USDC</div>
           </div>
 
           <div className="mt-3 inset statBox">
-            <div className="muted tiny">TOTAL REVENUE NOTIFIED</div>
-            <div className="h2">{fmt(notifiedQ.data, USDC_DECIMALS)} USDC</div>
+            <div className="muted tiny">TOTAL REVENUE NOTIFIED (USDC)</div>
+            <div className="h2">{fmt(notifiedUsdcQ.data, USDC_DECIMALS)} USDC</div>
+          </div>
+
+          <div className="mt-5 inset statBox">
+            <div className="muted tiny">CURRENT 24H STREAM (BRRR)</div>
+            <div className="h2">{fmt(epochRewardBrrrQ.data, RAFFLE_DECIMALS)} BRRR</div>
+          </div>
+
+          <div className="mt-3 inset statBox">
+            <div className="muted tiny">EPOCH ENDS (BRRR)</div>
+            <div className="muted tiny">{epochEndsBrrr}</div>
+          </div>
+
+          <div className="mt-3 inset statBox">
+            <div className="muted tiny">PENDING NEXT EPOCH (BRRR)</div>
+            <div className="h2">{fmt(pendingNextBrrrQ.data, RAFFLE_DECIMALS)} BRRR</div>
+          </div>
+
+          <div className="mt-3 inset statBox">
+            <div className="muted tiny">QUEUED (NO STAKERS) (BRRR)</div>
+            <div className="h2">{fmt(queuedBrrrQ.data, RAFFLE_DECIMALS)} BRRR</div>
+          </div>
+
+          <div className="mt-3 inset statBox">
+            <div className="muted tiny">TOTAL REVENUE NOTIFIED (BRRR)</div>
+            <div className="h2">{fmt(notifiedBrrrQ.data, RAFFLE_DECIMALS)} BRRR</div>
           </div>
         </div>
 
@@ -375,7 +496,16 @@ export default function StakePage() {
 
           <div className="mt-3 inset statBox">
             <div className="muted tiny">YIELD (USDC / BRRR / DAY)</div>
-            <div className="h2">{Number.isFinite(usdcPerBrrrPerDay) ? usdcPerBrrrPerDay.toFixed(8) : "0.00000000"}</div>
+            <div className="h2">
+              {Number.isFinite(usdcPerBrrrPerDay) ? usdcPerBrrrPerDay.toFixed(8) : "0.00000000"}
+            </div>
+          </div>
+
+          <div className="mt-3 inset statBox">
+            <div className="muted tiny">YIELD (BRRR / BRRR / DAY)</div>
+            <div className="h2">
+              {Number.isFinite(brrrPerBrrrPerDay) ? brrrPerBrrrPerDay.toFixed(8) : "0.00000000"}
+            </div>
           </div>
 
           <div className="mt-3 inset statBox">
@@ -401,7 +531,12 @@ export default function StakePage() {
 
           <div className="mt-3 inset statBox">
             <div className="muted tiny">TOTAL PAID (USDC)</div>
-            <div className="h2">{fmt(paidQ.data, USDC_DECIMALS)} USDC</div>
+            <div className="h2">{fmt(paidUsdcQ.data, USDC_DECIMALS)} USDC</div>
+          </div>
+
+          <div className="mt-3 inset statBox">
+            <div className="muted tiny">TOTAL PAID (BRRR)</div>
+            <div className="h2">{fmt(paidBrrrQ.data, RAFFLE_DECIMALS)} BRRR</div>
           </div>
         </div>
       </div>
