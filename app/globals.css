@@ -24,6 +24,9 @@
   --led3: rgba(180,255,125,0.70);
 }
 
+body { position: relative; z-index: 1; }
+
+
 html,body{
   height:100%;
   background:

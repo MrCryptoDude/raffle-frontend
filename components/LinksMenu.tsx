@@ -12,8 +12,10 @@ type Item = {
 const ITEMS: Item[] = [
   { label: "Home", href: "/" },
   { label: "Play", href: "/play" },
-  { label: "History", href: "/history" },
   { label: "RPS", href: "/rps" },
+  { label: "Gas Prediction", href: "/gas" },
+  { label: "Stake", href: "/stake" },
+  { label: "History", href: "/history" },
   {
     label: "Collection",
     href: "https://magiceden.io/ordinals/marketplace/ordinalprinters",

@@ -306,3 +306,64 @@ export const vrfAdapterAbi = [
   },
 ] as const;
 
+export const governorAbi = [
+  {
+    type: "event",
+    name: "ProposalCreated",
+    inputs: [
+      { indexed: true, name: "proposalId", type: "uint256" },
+      { indexed: true, name: "proposer", type: "address" },
+      { indexed: false, name: "targets", type: "address[]" },
+      { indexed: false, name: "values", type: "uint256[]" },
+      { indexed: false, name: "signatures", type: "string[]" },
+      { indexed: false, name: "calldatas", type: "bytes[]" },
+      { indexed: false, name: "voteStart", type: "uint256" },
+      { indexed: false, name: "voteEnd", type: "uint256" },
+      { indexed: false, name: "description", type: "string" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "function",
+    name: "state",
+    stateMutability: "view",
+    inputs: [{ name: "proposalId", type: "uint256" }],
+    outputs: [{ name: "", type: "uint8" }],
+  },
+  {
+    type: "function",
+    name: "proposalVotes",
+    stateMutability: "view",
+    inputs: [{ name: "proposalId", type: "uint256" }],
+    outputs: [
+      { name: "againstVotes", type: "uint256" },
+      { name: "forVotes", type: "uint256" },
+      { name: "abstainVotes", type: "uint256" },
+    ],
+  },
+  {
+    type: "function",
+    name: "proposalSnapshot",
+    stateMutability: "view",
+    inputs: [{ name: "proposalId", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "proposalDeadline",
+    stateMutability: "view",
+    inputs: [{ name: "proposalId", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "quorum",
+    stateMutability: "view",
+    inputs: [{ name: "timepoint", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+] as const;
+
+
+
+

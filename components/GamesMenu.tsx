@@ -30,6 +30,9 @@ export function GamesMenu() {
             <Link className="linksItem" href="/rps" onClick={() => setOpen(false)}>
               ROCK PAPER SCISSORS
             </Link>
+            <Link className="linksItem" href="/gas" onClick={() => setOpen(false)}>
+              GAS PREDICTION
+            </Link>
           </div>
         </>
       )}

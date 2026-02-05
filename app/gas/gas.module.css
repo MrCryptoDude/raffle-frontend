@@ -1,0 +1,463 @@
+.page {
+  min-height: 100vh;
+  padding: 18px 16px 32px;
+  background: radial-gradient(1200px 700px at 20% 10%, rgba(0, 255, 120, 0.10), transparent 60%),
+    radial-gradient(900px 500px at 80% 30%, rgba(0, 255, 120, 0.06), transparent 60%),
+    linear-gradient(180deg, #060a07, #050705);
+  color: rgba(220, 255, 235, 0.92);
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+}
+
+.page {
+  position: relative;
+  z-index: 1;
+}
+
+.headerRow {
+  max-width: 1240px;
+  margin: 0 auto 14px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.timer {
+  display: inline-flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(0, 255, 120, 0.18);
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.timerLabel {
+  opacity: 0.8;
+  font-weight: 600;
+}
+
+.timerValue {
+  font-weight: 700;
+  color: rgba(140, 255, 190, 0.95);
+}
+
+.subtle {
+  opacity: 0.75;
+  font-size: 13px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.warn {
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 155, 60, 0.35);
+  background: rgba(30, 15, 0, 0.35);
+  font-size: 13px;
+}
+
+.mainGrid {
+  max-width: 1240px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: 18px;
+}
+
+@media (max-width: 980px) {
+  .mainGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.leftPanel {
+  border-radius: 18px;
+  border: 1px solid rgba(0, 255, 120, 0.14);
+  background: rgba(0, 0, 0, 0.30);
+  padding: 14px;
+  position: relative;
+  overflow: hidden;
+
+  /* ✅ ensure panel is above any background overlays */
+  z-index: 10;
+  pointer-events: auto;
+}
+
+.leftTitle {
+  opacity: 0.75;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+.leftSpacer {
+  height: 260px; /* matches your sketch empty area */
+}
+
+.rowWrap {
+  margin-bottom: 14px;
+}
+
+.rowHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+
+.rowTitle {
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.2px;
+}
+
+.rowMeta {
+  font-size: 12px;
+  opacity: 0.65;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+.blockRow {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+.blockCell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.connector {
+  width: 10px;
+  height: 2px;
+  background: rgba(0, 255, 120, 0.25);
+  margin: 0 7px;
+  border-radius: 2px;
+  transform: translateY(7px);
+}
+
+/* ---- Small 3D cube ---- */
+.cube {
+  width: 22px;
+  height: 22px;
+  position: relative;
+  transform: translateZ(0);
+  margin: 4px 0;
+}
+
+.cubeTop,
+.cubeSide,
+.cubeFront {
+  position: absolute;
+  inset: 0;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+}
+
+.cubeFront {
+  transform: translate(0px, 4px);
+  overflow: hidden;
+  background: rgba(30, 60, 40, 0.65);
+  border-color: rgba(0, 255, 120, 0.20);
+}
+
+.cubeTop {
+  transform: translate(3px, -2px) skewX(-22deg);
+  height: 10px;
+  inset: 0 0 auto 0;
+  background: rgba(0, 255, 120, 0.10);
+  border-color: rgba(0, 255, 120, 0.12);
+}
+
+.cubeSide {
+  transform: translate(12px, 2px) skewY(-22deg);
+  width: 10px;
+  inset: 0 auto 0 auto;
+  background: rgba(0, 255, 120, 0.05);
+  border-color: rgba(0, 255, 120, 0.10);
+}
+
+/* Fill rises from bottom (scaleY) */
+.cubeFill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 100%;
+  transform-origin: bottom;
+  background: linear-gradient(180deg, rgba(0, 255, 120, 0.25), rgba(0, 255, 120, 0.70));
+}
+
+/* tone variants */
+.cubeGreen .cubeFront { background: rgba(10, 50, 30, 0.75); }
+.cubeGreen .cubeFill { background: linear-gradient(180deg, rgba(0, 255, 120, 0.25), rgba(0, 255, 120, 0.85)); }
+
+.cubeDark .cubeFront { background: rgba(0, 35, 18, 0.85); border-color: rgba(0, 255, 120, 0.28); }
+.cubeDark .cubeFill { background: linear-gradient(180deg, rgba(0, 255, 120, 0.45), rgba(0, 255, 120, 0.95)); }
+
+.cubeGrey .cubeFront { background: rgba(40, 40, 40, 0.55); border-color: rgba(255, 255, 255, 0.08); }
+.cubeGrey .cubeTop { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.07); }
+.cubeGrey .cubeSide { background: rgba(255, 255, 255, 0.03); border-color: rgba(255, 255, 255, 0.06); }
+.cubeGrey .cubeFill { background: rgba(255, 255, 255, 0.0); }
+
+/* ---- Right panel ---- */
+.rightPanel {
+  border-radius: 18px;
+  border: 1px solid rgba(0, 255, 120, 0.14);
+  background: rgba(0, 0, 0, 0.30);
+  padding: 14px;
+  overflow: hidden;
+
+  /* ✅ ensure panel is above any background overlays */
+  position: relative;
+  z-index: 10;
+  pointer-events: auto;
+}
+
+.tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.tabBtn {
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.25);
+  color: rgba(220, 255, 235, 0.9);
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+
+.tabBtnActive {
+  border-color: rgba(0, 255, 120, 0.40);
+  background: rgba(0, 255, 120, 0.14);
+  box-shadow: 0 0 0 1px rgba(0, 255, 120, 0.12), 0 8px 22px rgba(0, 255, 120, 0.10);
+}
+
+.betBox {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.betRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+  gap: 10px;
+}
+
+.betLabel {
+  opacity: 0.75;
+  font-size: 13px;
+}
+
+.betUnit {
+  font-weight: 800;
+  color: rgba(140, 255, 190, 0.92);
+}
+
+.betInput {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(0, 0, 0, 0.35);
+  color: rgba(220, 255, 235, 0.92);
+  outline: none;
+  margin-bottom: 10px;
+}
+
+.betCta {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(0, 255, 120, 0.18);
+  background: rgba(0, 255, 120, 0.10);
+  color: rgba(220, 255, 235, 0.92);
+  font-weight: 800;
+  cursor: pointer;
+  opacity: 0.55;
+}
+
+.descBox {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.descTitle {
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.descText {
+  opacity: 0.82;
+  line-height: 1.35;
+  font-size: 13px;
+}
+
+.descMeta {
+  margin-top: 8px;
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+.bigCubeSection {
+  margin-top: 12px;
+}
+
+.bigCubeTitle {
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+
+.bigCubeWrap {
+  display: flex;
+  justify-content: center;
+  padding: 6px 0 2px;
+}
+
+/* ---- Big 3D cube ---- */
+.bigCube {
+  width: 260px;
+  height: 180px;
+  position: relative;
+}
+
+.bigCubeTop,
+.bigCubeSide,
+.bigCubeFront {
+  position: absolute;
+  inset: 0;
+  border-radius: 18px;
+  border: 1px solid rgba(0, 255, 120, 0.18);
+}
+
+.bigCubeFront {
+  transform: translate(0px, 14px);
+  background: rgba(0, 0, 0, 0.38);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 16px;
+}
+
+.bigCubeTop {
+  transform: translate(10px, 0px) skewX(-18deg);
+  height: 60px;
+  inset: 0 0 auto 0;
+  background: rgba(0, 255, 120, 0.08);
+  border-color: rgba(0, 255, 120, 0.12);
+}
+
+.bigCubeSide {
+  transform: translate(210px, 18px) skewY(-18deg);
+  width: 70px;
+  inset: 0 auto 0 auto;
+  background: rgba(0, 255, 120, 0.04);
+  border-color: rgba(0, 255, 120, 0.10);
+}
+
+.bigCubeBadge {
+  display: inline-block;
+  align-self: flex-start;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 255, 120, 0.18);
+  background: rgba(0, 255, 120, 0.08);
+  font-weight: 900;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+
+.bigCubeText {
+  font-size: 40px;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  color: rgba(140, 255, 190, 0.95);
+  text-shadow: 0 0 18px rgba(0, 255, 120, 0.18);
+}
+
+.bigCubeSub {
+  margin-top: 10px;
+  font-size: 12px;
+  opacity: 0.78;
+  line-height: 1.35;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+/* ---- Segment Row (20-block rows) ---- */
+.segmentWrap {
+  display: flex;
+  margin-bottom: 14px;
+  gap: 10px;
+}
+
+.segmentLabelCol {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.segmentLabel {
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.2px;
+}
+
+.segmentAvg {
+  font-size: 12px;
+  opacity: 0.65;
+  margin-top: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+.segmentRowBox {
+  border-radius: 14px;
+  border: 1px solid rgba(0, 255, 120, 0.12);
+  background: rgba(0, 0, 0, 0.18);
+  padding: 12px;
+  position: relative;
+  overflow: hidden;
+}
+
+.rowMetaRight {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  font-size: 11px;
+  opacity: 0.55;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+.dragStrip {
+  overflow-x: auto;
+  padding: 8px 0;
+}
+
+.dragInner {
+  display: flex;
+  flex-direction: column;
+  min-width: max-content;
+}

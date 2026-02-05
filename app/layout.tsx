@@ -20,7 +20,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={pixel.variable}>
       <body>
-        <MatrixBg />
+        <div style={{ position: "fixed", inset: 0, zIndex: 0, pointerEvents: "none" }}>
+          <MatrixBg />
+        </div>
+
         <Providers>
           <Header />
           {children}
@@ -29,4 +32,3 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     </html>
   );
 }
-
