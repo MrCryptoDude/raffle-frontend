@@ -306,6 +306,43 @@ export const vrfAdapterAbi = [
   },
 ] as const;
 
+/**
+ * Admin functions for governance proposals
+ * These are the ONLY functions that should be callable via governance
+ */
+export const adminAbi = [
+  // Pause/Unpause (if contracts have Pausable)
+  { type: "function", name: "pause", stateMutability: "nonpayable", inputs: [], outputs: [] },
+  { type: "function", name: "unpause", stateMutability: "nonpayable", inputs: [], outputs: [] },
+  
+  // Fee management
+  { type: "function", name: "setFeeBps", stateMutability: "nonpayable", inputs: [{ name: "newFeeBps", type: "uint256" }], outputs: [] },
+  { type: "function", name: "setStakingFee", stateMutability: "nonpayable", inputs: [{ name: "newFeeBps", type: "uint256" }], outputs: [] },
+  
+  // Distributor management
+  { type: "function", name: "setRewardsDistributorUSDC", stateMutability: "nonpayable", inputs: [{ name: "distributor", type: "address" }], outputs: [] },
+  { type: "function", name: "setRewardsDistributorBRRR", stateMutability: "nonpayable", inputs: [{ name: "distributor", type: "address" }], outputs: [] },
+  { type: "function", name: "addUsdcDistributor", stateMutability: "nonpayable", inputs: [{ name: "distributor", type: "address" }], outputs: [] },
+  { type: "function", name: "removeUsdcDistributor", stateMutability: "nonpayable", inputs: [{ name: "distributor", type: "address" }], outputs: [] },
+  
+  // Game settings
+  { type: "function", name: "setMinBet", stateMutability: "nonpayable", inputs: [{ name: "newMin", type: "uint256" }], outputs: [] },
+  { type: "function", name: "setMaxBet", stateMutability: "nonpayable", inputs: [{ name: "newMax", type: "uint256" }], outputs: [] },
+  { type: "function", name: "setBettingWindow", stateMutability: "nonpayable", inputs: [{ name: "blocks", type: "uint256" }], outputs: [] },
+  
+  // Emergency functions
+  { type: "function", name: "emergencyWithdraw", stateMutability: "nonpayable", inputs: [{ name: "token", type: "address" }, { name: "to", type: "address" }, { name: "amount", type: "uint256" }], outputs: [] },
+  { type: "function", name: "rescueTokens", stateMutability: "nonpayable", inputs: [{ name: "token", type: "address" }, { name: "to", type: "address" }, { name: "amount", type: "uint256" }], outputs: [] },
+  
+  // VRF/Oracle updates
+  { type: "function", name: "setVrfAdapter", stateMutability: "nonpayable", inputs: [{ name: "adapter", type: "address" }], outputs: [] },
+  { type: "function", name: "setAutomationForwarder", stateMutability: "nonpayable", inputs: [{ name: "forwarder", type: "address" }], outputs: [] },
+  
+  // Ownership
+  { type: "function", name: "transferOwnership", stateMutability: "nonpayable", inputs: [{ name: "newOwner", type: "address" }], outputs: [] },
+  { type: "function", name: "acceptOwnership", stateMutability: "nonpayable", inputs: [], outputs: [] },
+] as const;
+
 export const governorAbi = [
   {
     type: "event",

@@ -2,548 +2,534 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { keccak256, toBytes, encodeFunctionData, isAddress, parseEther } from "viem";
-import { useReadContract, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
-import {
-  governorAbi,
-  raffleManagerAbi,
-  stakingAbi,
-  rpsManagerAbi,
-  erc20Abi,
-} from "@/lib/abis";
+import { keccak256, toBytes, encodeFunctionData, isAddress } from "viem";
+import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { governorAbi, adminAbi } from "@/lib/abis";
 import { addresses } from "@/lib/addresses";
 
-type Mode = "template" | "raw";
+// Governance action categories
+const GOVERNANCE_ACTIONS = [
+  {
+    category: "🚨 Emergency",
+    description: "Pause contracts or rescue stuck funds",
+    actions: [
+      { name: "pause", label: "Pause Contract", description: "Temporarily halt all contract operations", inputs: [] },
+      { name: "unpause", label: "Unpause Contract", description: "Resume contract operations", inputs: [] },
+      { name: "emergencyWithdraw", label: "Emergency Withdraw", description: "Rescue stuck tokens from contract", inputs: [
+        { name: "token", type: "address", placeholder: "Token address (0x...)" },
+        { name: "to", type: "address", placeholder: "Recipient address (0x...)" },
+        { name: "amount", type: "uint256", placeholder: "Amount in wei" },
+      ]},
+    ],
+  },
+  {
+    category: "⚙️ Protocol Settings",
+    description: "Adjust fees and game parameters",
+    actions: [
+      { name: "setFeeBps", label: "Set Fee (BPS)", description: "Change protocol fee in basis points (100 = 1%)", inputs: [
+        { name: "newFeeBps", type: "uint256", placeholder: "Fee in basis points (e.g., 1000 = 10%)" },
+      ]},
+      { name: "setMinBet", label: "Set Minimum Bet", description: "Change minimum bet amount", inputs: [
+        { name: "newMin", type: "uint256", placeholder: "Minimum bet in wei" },
+      ]},
+      { name: "setMaxBet", label: "Set Maximum Bet", description: "Change maximum bet amount", inputs: [
+        { name: "newMax", type: "uint256", placeholder: "Maximum bet in wei" },
+      ]},
+      { name: "setBettingWindow", label: "Set Betting Window", description: "Change how many blocks betting is open", inputs: [
+        { name: "blocks", type: "uint256", placeholder: "Number of blocks" },
+      ]},
+    ],
+  },
+  {
+    category: "🔗 Integrations",
+    description: "Update oracle and automation connections",
+    actions: [
+      { name: "setVrfAdapter", label: "Set VRF Adapter", description: "Update Chainlink VRF adapter address", inputs: [
+        { name: "adapter", type: "address", placeholder: "New adapter address (0x...)" },
+      ]},
+      { name: "setAutomationForwarder", label: "Set Automation Forwarder", description: "Update Chainlink Automation forwarder", inputs: [
+        { name: "forwarder", type: "address", placeholder: "New forwarder address (0x...)" },
+      ]},
+      { name: "addUsdcDistributor", label: "Add USDC Distributor", description: "Authorize a new contract to distribute USDC rewards", inputs: [
+        { name: "distributor", type: "address", placeholder: "Distributor address (0x...)" },
+      ]},
+      { name: "removeUsdcDistributor", label: "Remove USDC Distributor", description: "Revoke USDC distribution rights", inputs: [
+        { name: "distributor", type: "address", placeholder: "Distributor address (0x...)" },
+      ]},
+    ],
+  },
+  {
+    category: "👑 Ownership",
+    description: "Transfer protocol control",
+    actions: [
+      { name: "transferOwnership", label: "Transfer Ownership", description: "Initiate ownership transfer to new address", inputs: [
+        { name: "newOwner", type: "address", placeholder: "New owner address (0x...)" },
+      ]},
+      { name: "acceptOwnership", label: "Accept Ownership", description: "Accept pending ownership transfer", inputs: [] },
+    ],
+  },
+];
 
-type ActionRow = {
-  id: string;
-  target: string; // address
-  valueEth: string; // UI input, converted to wei
-  // Raw mode
-  calldata: string; // 0x...
-  // Template mode
-  abiKey: "raffleManagerAbi" | "stakingAbi" | "rpsManagerAbi" | "erc20Abi";
-  fnName: string;
-  argsJson: string; // JSON array, e.g. [123,"0x..."]
-};
-
-function uid() {
-  return Math.random().toString(16).slice(2) + Date.now().toString(16);
-}
-
-function safeBytes32HashDescription(desc: string) {
-  // OZ uses keccak256(bytes(description))
-  return keccak256(toBytes(desc));
-}
-
-function parseValueWei(valueEth: string): bigint {
-  const v = valueEth.trim();
-  if (!v) return 0n;
-  // parseEther handles decimals; throws if invalid
-  return parseEther(v as `${number}`);
-}
-
-function normalizeHexBytes(x: string) {
-  const s = x.trim();
-  if (s === "") return "0x";
-  if (!s.startsWith("0x")) return "0x" + s;
-  return s;
-}
-
-function getAbiByKey(key: ActionRow["abiKey"]) {
-  if (key === "raffleManagerAbi") return raffleManagerAbi;
-  if (key === "stakingAbi") return stakingAbi;
-  if (key === "rpsManagerAbi") return rpsManagerAbi;
-  return erc20Abi;
-}
-
-function functionOptionsFromAbi(abi: readonly any[]) {
-  return abi
-    .filter((x) => x.type === "function")
-    .map((x) => x.name as string)
-    .filter(Boolean);
-}
+const CONTRACT_OPTIONS = [
+  { label: "Gas Prediction Market", value: addresses.gasMarket },
+  { label: "Raffle Manager", value: addresses.manager },
+  { label: "RPS Manager", value: addresses.rps },
+  { label: "Staking Rewards", value: addresses.staking },
+].filter((x) => x.value);
 
 export default function CreateProposalPage() {
+  const { isConnected } = useAccount();
   const governor = addresses.governor;
 
-  const [mode, setMode] = React.useState<Mode>("template");
-  const [description, setDescription] = React.useState<string>(
-    "TITLE: \n\nDETAILS:\n\n"
-  );
+  // Form state
+  const [title, setTitle] = React.useState("");
+  const [description, setDescription] = React.useState("");
+  const [targetContract, setTargetContract] = React.useState(CONTRACT_OPTIONS[0]?.value || "");
+  const [selectedAction, setSelectedAction] = React.useState<string>("");
+  const [actionInputs, setActionInputs] = React.useState<Record<string, string>>({});
 
-  const [rows, setRows] = React.useState<ActionRow[]>(() => [
-    {
-      id: uid(),
-      target: addresses.timelock ?? "",
-      valueEth: "0",
-      calldata: "0x",
-      abiKey: "stakingAbi",
-      fnName: "rollEpochIfReady",
-      argsJson: "[]",
-    },
-  ]);
+  // Get selected action details
+  const selectedActionDetails = React.useMemo(() => {
+    for (const category of GOVERNANCE_ACTIONS) {
+      const action = category.actions.find((a) => a.name === selectedAction);
+      if (action) return action;
+    }
+    return null;
+  }, [selectedAction]);
 
-  // Build targets/values/calldatas exactly as will be sent
-  const build = React.useMemo(() => {
-    const targets: `0x${string}`[] = [];
-    const values: bigint[] = [];
-    const calldatas: `0x${string}`[] = [];
+  // Reset inputs when action changes
+  React.useEffect(() => {
+    setActionInputs({});
+  }, [selectedAction]);
 
+  // Build the proposal data
+  const buildResult = React.useMemo(() => {
     const errors: string[] = [];
 
-    for (let i = 0; i < rows.length; i++) {
-      const r = rows[i];
-      const idx = i + 1;
+    if (!title.trim()) errors.push("Title is required");
+    if (!description.trim()) errors.push("Description is required");
+    if (!isAddress(targetContract)) errors.push("Invalid target contract address");
+    if (!selectedAction) errors.push("Please select an action");
 
-      if (!isAddress(r.target)) {
-        errors.push(`Row ${idx}: invalid target address`);
-        continue;
-      }
-
-      let valueWei = 0n;
-      try {
-        valueWei = parseValueWei(r.valueEth);
-      } catch {
-        errors.push(`Row ${idx}: invalid ETH value`);
-        continue;
-      }
-
-      let calldata: `0x${string}` = "0x";
-      try {
-        if (mode === "raw") {
-          const raw = normalizeHexBytes(r.calldata);
-          // minimal sanity
-          if (!raw.startsWith("0x")) throw new Error("bad hex");
-          calldata = raw as `0x${string}`;
-        } else {
-          // template: encodeFunctionData from ABI
-          const abi = getAbiByKey(r.abiKey);
-          const fn = r.fnName?.trim();
-          if (!fn) throw new Error("missing fnName");
-
-          let args: any[] = [];
-          try {
-            const parsed = JSON.parse(r.argsJson || "[]");
-            if (!Array.isArray(parsed)) throw new Error("args must be JSON array");
-            args = parsed;
-          } catch {
-            throw new Error("argsJson must be a JSON array (e.g. [])");
-          }
-
-          calldata = encodeFunctionData({
-            abi: abi as any,
-            functionName: fn as any,
-            args,
-          }) as `0x${string}`;
-        }
-      } catch (e: any) {
-        errors.push(`Row ${idx}: ${e?.message || "calldata encode error"}`);
-        continue;
-      }
-
-      targets.push(r.target as `0x${string}`);
-      values.push(valueWei);
-      calldatas.push(calldata);
+    if (errors.length > 0) {
+      return { errors, targets: [], values: [], calldatas: [], descriptionHash: "0x" as `0x${string}` };
     }
 
-    const descriptionHash = safeBytes32HashDescription(description);
+    try {
+      const fullDescription = `${title}\n\n${description}`;
+      const descriptionHash = keccak256(toBytes(fullDescription));
 
-    return { targets, values, calldatas, descriptionHash, errors };
-  }, [rows, mode, description]);
+      // Parse args based on input types
+      const inputs = selectedActionDetails?.inputs || [];
+      const parsedArgs = inputs.map((input) => {
+        const val = actionInputs[input.name] || "";
+        if (input.type === "uint256") {
+          return BigInt(val || "0");
+        }
+        return val;
+      });
 
-  // ProposalId preview (on-chain hashProposal)
-  const hashProposal = useReadContract({
-    address: governor,
-    abi: governorAbi,
-    functionName: "hashProposal",
-    args:
-      build.errors.length === 0
-        ? [build.targets, build.values, build.calldatas, build.descriptionHash]
-        : undefined,
-    query: {
-      enabled: !!governor && build.errors.length === 0 && build.targets.length > 0,
-    },
-  });
+      const calldata = encodeFunctionData({
+        abi: adminAbi as any,
+        functionName: selectedAction as any,
+        args: parsedArgs,
+      }) as `0x${string}`;
 
-  const proposalIdPreview = hashProposal.data as unknown as bigint | undefined;
+      return {
+        errors: [],
+        targets: [targetContract as `0x${string}`],
+        values: [0n],
+        calldatas: [calldata],
+        descriptionHash,
+        fullDescription,
+      };
+    } catch (e: any) {
+      return {
+        errors: [`Failed to encode: ${e?.message || "Unknown error"}`],
+        targets: [],
+        values: [],
+        calldatas: [],
+        descriptionHash: "0x" as `0x${string}`,
+      };
+    }
+  }, [title, description, targetContract, selectedAction, selectedActionDetails, actionInputs]);
 
-  // Write: propose()
-  const { writeContract, data: txHash, isPending } = useWriteContract();
+  // Submit proposal
+  const { writeContract, data: txHash, isPending, error: writeError } = useWriteContract();
+  const receipt = useWaitForTransactionReceipt({ hash: txHash, query: { enabled: !!txHash } });
 
-  const receipt = useWaitForTransactionReceipt({
-    hash: txHash,
-    query: { enabled: !!txHash },
-  });
-
-  function updateRow(id: string, patch: Partial<ActionRow>) {
-    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
-  }
-
-  function addRow() {
-    setRows((prev) => [
-      ...prev,
-      {
-        id: uid(),
-        target: addresses.timelock ?? "",
-        valueEth: "0",
-        calldata: "0x",
-        abiKey: "stakingAbi",
-        fnName: "",
-        argsJson: "[]",
-      },
-    ]);
-  }
-
-  function removeRow(id: string) {
-    setRows((prev) => (prev.length <= 1 ? prev : prev.filter((r) => r.id !== id)));
-  }
-
-  function onSubmit() {
-    if (!governor) return;
-    if (build.errors.length > 0) return;
-    if (build.targets.length === 0) return;
+  function submitProposal() {
+    if (!governor || buildResult.errors.length > 0) return;
 
     writeContract({
       address: governor,
       abi: governorAbi,
       functionName: "propose",
-      args: [build.targets, build.values, build.calldatas, description],
+      args: [buildResult.targets, buildResult.values, buildResult.calldatas, buildResult.fullDescription!],
     });
   }
 
-  const primaryDisabled =
-    !governor ||
-    build.targets.length === 0 ||
-    build.errors.length > 0 ||
-    isPending;
-
-  // UI: known target shortcuts (optional but helpful)
-  const targetPresets: { label: string; value: string }[] = [
-    { label: "Governor", value: addresses.governor },
-    { label: "Timelock", value: addresses.timelock },
-    { label: "Raffle", value: addresses.raffle },
-    { label: "Manager", value: addresses.manager },
-    { label: "Staking", value: addresses.staking },
-    { label: "RPS", value: addresses.rps },
-    { label: "VRF Adapter", value: addresses.vrfAdapter },
-    { label: "USDC", value: addresses.usdc },
-  ].filter((x) => !!x.value);
+  const canSubmit = isConnected && buildResult.errors.length === 0 && !isPending;
 
   return (
     <main className="screen">
-      <section className="panel p-5 text-center">
-        <div className="h1">CREATE PROPOSAL</div>
-        <div className="muted text-[10px] mt-2">
-          Byte-exact calldata preview • proposalId consistency • no privileged EOAs
-        </div>
-        <div className="muted text-[10px] mt-2">
-          <Link className="underline" href="/governance">
-            ← Back to Governance
-          </Link>
+      {/* Header */}
+      <section style={{
+        padding: "32px 24px",
+        background: "rgba(0,0,0,0.3)",
+        borderRadius: 16,
+        border: "1px solid rgba(0,255,140,0.15)",
+        textAlign: "center",
+      }}>
+        <Link href="/governance" style={{ fontSize: 13, color: "rgba(0,255,140,0.7)", textDecoration: "none" }}>
+          ← Back to Governance
+        </Link>
+        <h1 style={{ fontSize: 28, fontWeight: 900, color: "rgba(0,255,140,0.95)", marginTop: 16 }}>
+          📝 CREATE PROPOSAL
+        </h1>
+        <p style={{ fontSize: 14, color: "rgba(255,255,255,0.6)", marginTop: 8 }}>
+          Submit a governance proposal for protocol changes
+        </p>
+        <div style={{
+          marginTop: 16,
+          padding: "12px 16px",
+          background: "rgba(255,200,100,0.1)",
+          border: "1px solid rgba(255,200,100,0.3)",
+          borderRadius: 10,
+          display: "inline-block",
+        }}>
+          <p style={{ fontSize: 12, color: "rgba(255,200,100,0.9)" }}>
+            ⚠️ Governance is for <strong>protocol-level changes only</strong> — not for user actions like claiming rewards or making bets
+          </p>
         </div>
       </section>
 
-      <section className="mt-5 panel p-5">
-        {/* Force 3-column horizontal layout to match your mock */}
-        <div className="govWrap">
-          {/* LEFT: mode + actions list */}
-          <div className="inset p-3 govLeft">
-            <div className="h2">ACTIONS</div>
-            <div className="muted tiny mt-2">Build targets[] values[] calldatas[]</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 20, marginTop: 20 }}>
+        {/* Left - Form */}
+        <div style={{
+          background: "rgba(0,0,0,0.3)",
+          borderRadius: 16,
+          border: "1px solid rgba(0,255,140,0.15)",
+          padding: 24,
+        }}>
+          {/* Step 1: Basic Info */}
+          <div style={{ marginBottom: 32 }}>
+            <h2 style={{ fontSize: 18, fontWeight: 800, color: "rgba(255,255,255,0.9)", marginBottom: 16 }}>
+              1️⃣ Proposal Details
+            </h2>
 
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                className={`badge ${mode === "template" ? "border-[rgba(180,255,125,0.85)]" : ""}`}
-                onClick={() => setMode("template")}
-              >
-                TEMPLATE MODE
-              </button>
-              <button
-                type="button"
-                className={`badge ${mode === "raw" ? "border-[rgba(180,255,125,0.85)]" : ""}`}
-                onClick={() => setMode("raw")}
-              >
-                RAW MODE
-              </button>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", fontSize: 13, color: "rgba(255,255,255,0.7)", marginBottom: 8 }}>
+                Title *
+              </label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g., Emergency: Pause Gas Market due to oracle issue"
+                style={{
+                  width: "100%",
+                  padding: "14px 16px",
+                  borderRadius: 10,
+                  border: "1px solid rgba(255,255,255,0.2)",
+                  background: "rgba(0,0,0,0.3)",
+                  color: "rgba(255,255,255,0.9)",
+                  fontSize: 15,
+                }}
+              />
             </div>
 
-            <div className="mt-3">
-              <button className="btn btnBlue w-full" type="button" onClick={addRow}>
-                + ADD ACTION
-              </button>
-            </div>
-
-            <div className="muted tiny mt-3">Scroll • edit a row in the middle</div>
-
-            <div className="mt-3 govList">
-              <div className="grid gap-2">
-                {rows.map((r, i) => (
-                  <div key={r.id} className="inset p-3" style={{ borderWidth: 2 }}>
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="tiny muted">ACTION {i + 1}</div>
-                      <button className="tiny underline muted" type="button" onClick={() => removeRow(r.id)}>
-                        REMOVE
-                      </button>
-                    </div>
-                    <div className="tiny muted mt-1 truncate">
-                      target: {r.target || "—"}
-                    </div>
-                    <div className="tiny muted truncate">
-                      value: {r.valueEth || "0"} ETH
-                    </div>
-                    <div className="tiny muted truncate">
-                      {mode === "template"
-                        ? `fn: ${r.fnName || "—"}`
-                        : `calldata: ${(r.calldata || "0x").slice(0, 18)}…`}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* MIDDLE: editor */}
-          <div className="inset p-4 govMid">
-            <div className="flex items-center justify-between gap-3">
-              <div className="h2">CREATE PROPOSAL</div>
-              <div className="badge">GOV: {governor}</div>
-            </div>
-
-            <div className="mt-4 panel p-3">
-              <div className="muted tiny">DESCRIPTION (used for descriptionHash)</div>
+            <div>
+              <label style={{ display: "block", fontSize: 13, color: "rgba(255,255,255,0.7)", marginBottom: 8 }}>
+                Reason / Justification *
+              </label>
               <textarea
-                className="input mt-2"
-                style={{ width: "100%", minHeight: 140, resize: "vertical" }}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
+                placeholder="Explain why this change is needed and what problem it solves..."
+                rows={4}
+                style={{
+                  width: "100%",
+                  padding: "14px 16px",
+                  borderRadius: 10,
+                  border: "1px solid rgba(255,255,255,0.2)",
+                  background: "rgba(0,0,0,0.3)",
+                  color: "rgba(255,255,255,0.9)",
+                  fontSize: 14,
+                  resize: "vertical",
+                }}
               />
-              <div className="muted tiny mt-2">
-                descriptionHash = <span className="font-mono">{build.descriptionHash}</span>
-              </div>
-            </div>
-
-            <div className="mt-4 grid gap-3">
-              {rows.map((r, idx) => {
-                const isFirst = idx === 0;
-                const abi = getAbiByKey(r.abiKey);
-                const fnOptions = functionOptionsFromAbi(abi);
-
-                return (
-                  <div key={r.id} className="panel p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="h2">ACTION {idx + 1}</div>
-                      <div className="tiny muted">{isFirst ? "Edit rows here" : ""}</div>
-                    </div>
-
-                    <div className="mt-3 grid gap-2">
-                      <div>
-                        <div className="muted tiny">TARGET</div>
-                        <div className="flex gap-2 mt-1 flex-wrap">
-                          <input
-                            className="input"
-                            style={{ width: "100%" }}
-                            value={r.target}
-                            onChange={(e) => updateRow(r.id, { target: e.target.value })}
-                            placeholder="0x..."
-                          />
-                          <div className="flex gap-2 flex-wrap">
-                            {targetPresets.map((p) => (
-                              <button
-                                key={p.label}
-                                type="button"
-                                className="badge"
-                                onClick={() => updateRow(r.id, { target: p.value })}
-                              >
-                                {p.label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="muted tiny">VALUE (ETH)</div>
-                        <input
-                          className="input mt-1"
-                          style={{ width: "220px" }}
-                          value={r.valueEth}
-                          onChange={(e) => updateRow(r.id, { valueEth: e.target.value })}
-                          placeholder="0"
-                        />
-                      </div>
-
-                      {mode === "raw" ? (
-                        <div>
-                          <div className="muted tiny">CALLDATA (RAW BYTES)</div>
-                          <textarea
-                            className="input mt-1"
-                            style={{ width: "100%", minHeight: 90, resize: "vertical" }}
-                            value={r.calldata}
-                            onChange={(e) => updateRow(r.id, { calldata: e.target.value })}
-                            placeholder="0x..."
-                          />
-                        </div>
-                      ) : (
-                        <div className="grid gap-2">
-                          <div className="grid gap-2" style={{ gridTemplateColumns: "220px 1fr" }}>
-                            <div>
-                              <div className="muted tiny">ABI</div>
-                              <select
-                                className="input mt-1"
-                                style={{ width: "100%" }}
-                                value={r.abiKey}
-                                onChange={(e) =>
-                                  updateRow(r.id, { abiKey: e.target.value as any, fnName: "", argsJson: "[]" })
-                                }
-                              >
-                                <option value="stakingAbi">stakingAbi</option>
-                                <option value="raffleManagerAbi">raffleManagerAbi</option>
-                                <option value="rpsManagerAbi">rpsManagerAbi</option>
-                                <option value="erc20Abi">erc20Abi</option>
-                              </select>
-                            </div>
-
-                            <div>
-                              <div className="muted tiny">FUNCTION</div>
-                              <select
-                                className="input mt-1"
-                                style={{ width: "100%" }}
-                                value={r.fnName}
-                                onChange={(e) => updateRow(r.id, { fnName: e.target.value })}
-                              >
-                                <option value="">Select function…</option>
-                                {fnOptions.map((n) => (
-                                  <option key={n} value={n}>
-                                    {n}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          </div>
-
-                          <div>
-                            <div className="muted tiny">ARGS (JSON ARRAY)</div>
-                            <input
-                              className="input mt-1"
-                              style={{ width: "100%" }}
-                              value={r.argsJson}
-                              onChange={(e) => updateRow(r.id, { argsJson: e.target.value })}
-                              placeholder='e.g. [] or ["0xabc...", 123]'
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
             </div>
           </div>
 
-          {/* RIGHT: preview + submit */}
-          <div className="inset p-3 govRight">
-            <div className="h2">PREVIEW</div>
+          {/* Step 2: Target Contract */}
+          <div style={{ marginBottom: 32 }}>
+            <h2 style={{ fontSize: 18, fontWeight: 800, color: "rgba(255,255,255,0.9)", marginBottom: 16 }}>
+              2️⃣ Target Contract
+            </h2>
 
-            <div className="mt-3 panel p-3">
-              <div className="muted tiny">PROPOSAL ID (PREVIEW)</div>
-              <div className="font-mono text-[10px] mt-2">
-                {proposalIdPreview !== undefined ? proposalIdPreview.toString() : "—"}
-              </div>
-              <div className="muted tiny mt-2">
-                Uses Governor.hashProposal(targets, values, calldatas, descriptionHash)
-              </div>
+            <div style={{ display: "grid", gap: 10 }}>
+              {CONTRACT_OPTIONS.map((c) => (
+                <button
+                  key={c.value}
+                  onClick={() => setTargetContract(c.value!)}
+                  style={{
+                    padding: "14px 16px",
+                    borderRadius: 10,
+                    border: "1px solid",
+                    borderColor: targetContract === c.value ? "rgba(0,255,140,0.5)" : "rgba(255,255,255,0.1)",
+                    background: targetContract === c.value ? "rgba(0,255,140,0.1)" : "rgba(0,0,0,0.2)",
+                    textAlign: "left",
+                    cursor: "pointer",
+                  }}
+                >
+                  <p style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,0.9)" }}>
+                    {c.label}
+                  </p>
+                  <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", fontFamily: "monospace", marginTop: 4 }}>
+                    {c.value}
+                  </p>
+                </button>
+              ))}
             </div>
+          </div>
 
-            <div className="mt-3 panel p-3">
-              <div className="muted tiny">TARGETS[]</div>
-              <pre className="mt-2 text-[10px] whitespace-pre-wrap break-words">
-                {build.targets.length ? JSON.stringify(build.targets, null, 2) : "[]"}
-              </pre>
+          {/* Step 3: Action */}
+          <div style={{ marginBottom: 32 }}>
+            <h2 style={{ fontSize: 18, fontWeight: 800, color: "rgba(255,255,255,0.9)", marginBottom: 16 }}>
+              3️⃣ Select Action
+            </h2>
 
-              <div className="muted tiny mt-3">VALUES[] (wei)</div>
-              <pre className="mt-2 text-[10px] whitespace-pre-wrap break-words">
-                {build.values.length ? JSON.stringify(build.values.map((v) => v.toString()), null, 2) : "[]"}
-              </pre>
-
-              <div className="muted tiny mt-3">CALLDATA[] (raw bytes)</div>
-              <pre className="mt-2 text-[10px] whitespace-pre-wrap break-words">
-                {build.calldatas.length ? JSON.stringify(build.calldatas, null, 2) : "[]"}
-              </pre>
-            </div>
-
-            {build.errors.length > 0 && (
-              <div className="mt-3 panel p-3">
-                <div className="muted tiny danger">ERRORS</div>
-                <ul className="mt-2 text-[11px]">
-                  {build.errors.map((e, i) => (
-                    <li key={i} className="danger">
-                      - {e}
-                    </li>
+            {GOVERNANCE_ACTIONS.map((category) => (
+              <div key={category.category} style={{ marginBottom: 20 }}>
+                <h3 style={{ fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,0.7)", marginBottom: 8 }}>
+                  {category.category}
+                </h3>
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginBottom: 12 }}>
+                  {category.description}
+                </p>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {category.actions.map((action) => (
+                    <button
+                      key={action.name}
+                      onClick={() => setSelectedAction(action.name)}
+                      style={{
+                        padding: "12px 14px",
+                        borderRadius: 8,
+                        border: "1px solid",
+                        borderColor: selectedAction === action.name ? "rgba(0,255,140,0.5)" : "rgba(255,255,255,0.1)",
+                        background: selectedAction === action.name ? "rgba(0,255,140,0.1)" : "rgba(0,0,0,0.2)",
+                        textAlign: "left",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <p style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.9)" }}>
+                        {action.label}
+                      </p>
+                      <p style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", marginTop: 2 }}>
+                        {action.description}
+                      </p>
+                    </button>
                   ))}
-                </ul>
-              </div>
-            )}
-
-            <div className="mt-3">
-              <button className="btn btnBlue w-full" type="button" onClick={onSubmit} disabled={primaryDisabled}>
-                {isPending ? "SUBMITTING..." : "SUBMIT PROPOSAL"}
-              </button>
-              <div className="muted text-[10px] mt-2">
-                This will call Governor.propose() with the exact arrays shown above.
-              </div>
-            </div>
-
-            {txHash && (
-              <div className="mt-3 panel p-3">
-                <div className="muted tiny">TX</div>
-                <div className="font-mono text-[10px] mt-2 break-words">{txHash}</div>
-                <div className="muted tiny mt-2">
-                  {receipt.isLoading ? "Confirming..." : receipt.isSuccess ? "Confirmed ✓" : ""}
                 </div>
               </div>
-            )}
+            ))}
           </div>
+
+          {/* Step 4: Action Parameters */}
+          {selectedActionDetails && selectedActionDetails.inputs.length > 0 && (
+            <div style={{ marginBottom: 32 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 800, color: "rgba(255,255,255,0.9)", marginBottom: 16 }}>
+                4️⃣ Action Parameters
+              </h2>
+
+              {selectedActionDetails.inputs.map((input) => (
+                <div key={input.name} style={{ marginBottom: 14 }}>
+                  <label style={{ display: "block", fontSize: 13, color: "rgba(255,255,255,0.7)", marginBottom: 6 }}>
+                    {input.name} <span style={{ color: "rgba(255,255,255,0.4)" }}>({input.type})</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={actionInputs[input.name] || ""}
+                    onChange={(e) => setActionInputs({ ...actionInputs, [input.name]: e.target.value })}
+                    placeholder={input.placeholder}
+                    style={{
+                      width: "100%",
+                      padding: "12px 14px",
+                      borderRadius: 8,
+                      border: "1px solid rgba(255,255,255,0.15)",
+                      background: "rgba(0,0,0,0.2)",
+                      color: "rgba(255,255,255,0.9)",
+                      fontSize: 13,
+                      fontFamily: input.type === "address" ? "monospace" : "inherit",
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
-        <style jsx>{`
-          .govWrap {
-            display: flex;
-            flex-direction: row;
-            gap: 16px;
-            align-items: flex-start;
-            flex-wrap: nowrap;
+        {/* Right - Preview & Submit */}
+        <div style={{
+          background: "rgba(0,0,0,0.3)",
+          borderRadius: 16,
+          border: "1px solid rgba(0,255,140,0.15)",
+          padding: 24,
+          height: "fit-content",
+          position: "sticky",
+          top: 100,
+        }}>
+          <h2 style={{ fontSize: 18, fontWeight: 800, color: "rgba(255,255,255,0.9)", marginBottom: 20 }}>
+            📋 Proposal Summary
+          </h2>
+
+          {/* Preview Card */}
+          <div style={{
+            padding: 16,
+            borderRadius: 12,
+            background: "rgba(0,0,0,0.3)",
+            border: "1px solid rgba(255,255,255,0.1)",
+            marginBottom: 20,
+          }}>
+            <div style={{ marginBottom: 16 }}>
+              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 4 }}>TITLE</p>
+              <p style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,0.9)" }}>
+                {title || "—"}
+              </p>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 4 }}>TARGET</p>
+              <p style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
+                {CONTRACT_OPTIONS.find((c) => c.value === targetContract)?.label || "—"}
+              </p>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 4 }}>ACTION</p>
+              <p style={{ fontSize: 13, color: "rgba(0,255,140,0.9)", fontWeight: 600 }}>
+                {selectedActionDetails?.label || "—"}
+              </p>
+            </div>
+
+            {selectedActionDetails && selectedActionDetails.inputs.length > 0 && (
+              <div>
+                <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 4 }}>PARAMETERS</p>
+                {selectedActionDetails.inputs.map((input) => (
+                  <p key={input.name} style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", marginTop: 2 }}>
+                    {input.name}: <span style={{ fontFamily: "monospace" }}>{actionInputs[input.name] || "—"}</span>
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Errors */}
+          {buildResult.errors.length > 0 && (
+            <div style={{
+              padding: 14,
+              borderRadius: 10,
+              background: "rgba(255,100,100,0.1)",
+              border: "1px solid rgba(255,100,100,0.3)",
+              marginBottom: 20,
+            }}>
+              <p style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,100,100,0.9)", marginBottom: 8 }}>
+                ⚠️ Please fix:
+              </p>
+              {buildResult.errors.map((err, i) => (
+                <p key={i} style={{ fontSize: 12, color: "rgba(255,100,100,0.8)", marginTop: 4 }}>
+                  • {err}
+                </p>
+              ))}
+            </div>
+          )}
+
+          {/* Submit Button */}
+          <button
+            onClick={submitProposal}
+            disabled={!canSubmit}
+            style={{
+              width: "100%",
+              padding: "18px 24px",
+              borderRadius: 12,
+              border: "2px solid rgba(0,255,140,0.5)",
+              background: canSubmit ? "rgba(0,255,140,0.2)" : "rgba(100,100,100,0.2)",
+              color: canSubmit ? "rgba(0,255,140,0.95)" : "rgba(150,150,150,0.8)",
+              fontSize: 16,
+              fontWeight: 800,
+              cursor: canSubmit ? "pointer" : "not-allowed",
+            }}
+          >
+            {isPending ? "⏳ SUBMITTING..." : "🚀 SUBMIT PROPOSAL"}
+          </button>
+
+          {!isConnected && (
+            <p style={{ marginTop: 12, fontSize: 12, color: "rgba(255,200,100,0.9)", textAlign: "center" }}>
+              ⚠️ Connect your wallet to submit
+            </p>
+          )}
+
+          {/* Transaction Status */}
+          {txHash && (
+            <div style={{
+              marginTop: 16,
+              padding: 14,
+              borderRadius: 10,
+              background: receipt.isSuccess ? "rgba(100,255,150,0.1)" : "rgba(100,200,255,0.1)",
+              border: `1px solid ${receipt.isSuccess ? "rgba(100,255,150,0.3)" : "rgba(100,200,255,0.3)"}`,
+            }}>
+              <p style={{ fontSize: 12, color: receipt.isSuccess ? "rgba(100,255,150,0.9)" : "rgba(100,200,255,0.9)" }}>
+                {receipt.isLoading ? "⏳ Confirming..." : receipt.isSuccess ? "✅ Proposal created!" : ""}
+              </p>
+              {receipt.isSuccess && (
+                <Link href="/governance" style={{ fontSize: 12, color: "rgba(0,255,140,0.8)", marginTop: 8, display: "block" }}>
+                  → View all proposals
+                </Link>
+              )}
+            </div>
+          )}
+
+          {writeError && (
+            <div style={{
+              marginTop: 16,
+              padding: 14,
+              borderRadius: 10,
+              background: "rgba(255,100,100,0.1)",
+              border: "1px solid rgba(255,100,100,0.3)",
+            }}>
+              <p style={{ fontSize: 12, color: "rgba(255,100,100,0.9)" }}>
+                ❌ {writeError.message?.slice(0, 100)}
+              </p>
+            </div>
+          )}
+
+          {/* Info Box */}
+          <div style={{
+            marginTop: 20,
+            padding: 14,
+            borderRadius: 10,
+            background: "rgba(100,200,255,0.05)",
+            border: "1px solid rgba(100,200,255,0.2)",
+          }}>
+            <p style={{ fontSize: 11, color: "rgba(100,200,255,0.8)", lineHeight: 1.5 }}>
+              💡 <strong>How voting works:</strong><br />
+              After submission, BRRR token holders can vote FOR, AGAINST, or ABSTAIN. 
+              If the proposal passes quorum and has majority FOR votes, it can be queued 
+              and executed via the Timelock.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile Responsive */}
+      <style jsx>{`
+        @media (max-width: 900px) {
+          div[style*="grid-template-columns: 1fr 380px"] {
+            grid-template-columns: 1fr !important;
           }
-          .govLeft {
-            flex: 0 0 260px;
-            min-width: 260px;
-          }
-          .govMid {
-            flex: 1 1 auto;
-            min-width: 0;
-          }
-          .govRight {
-            flex: 0 0 260px;
-            min-width: 260px;
-          }
-          .govList {
-            max-height: 640px;
-            overflow-y: auto;
-            padding-right: 4px;
-          }
-          @media (max-width: 820px) {
-            .govWrap {
-              flex-direction: column;
-            }
-            .govLeft,
-            .govRight {
-              flex: 0 0 auto;
-              min-width: 0;
-            }
-          }
-        `}</style>
-      </section>
+        }
+      `}</style>
     </main>
   );
 }
