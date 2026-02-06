@@ -16,7 +16,7 @@ export function GamesMenu() {
 
   return (
     <div className="linksWrap">
-      <button className="btn btnBlue" onClick={() => setOpen((v) => !v)}>
+      <button className="btn btnBlue menuBtn" onClick={() => setOpen((v) => !v)}>
         GAMES
       </button>
 

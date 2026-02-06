@@ -3,7 +3,6 @@
 import * as React from "react";
 import { formatUnits } from "viem";
 import { USDC_DECIMALS } from "../lib/addresses";
-import { RevealSlot } from "./RevealSlot";
 
 type Stage = "idle" | "spinning" | "mining" | "done" | "error";
 

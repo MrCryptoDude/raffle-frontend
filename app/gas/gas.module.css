@@ -453,11 +453,33 @@
 
 .dragStrip {
   overflow-x: auto;
-  padding: 8px 0;
+  overflow-y: hidden;
+  padding: 12px 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 255, 140, 0.3) rgba(0, 0, 0, 0.2);
+}
+
+.dragStrip::-webkit-scrollbar {
+  height: 6px;
+}
+
+.dragStrip::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+.dragStrip::-webkit-scrollbar-thumb {
+  background: rgba(0, 255, 140, 0.3);
+  border-radius: 3px;
+}
+
+.dragStrip::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 255, 140, 0.5);
 }
 
 .dragInner {
   display: flex;
   flex-direction: column;
   min-width: max-content;
+  gap: 8px;
 }
