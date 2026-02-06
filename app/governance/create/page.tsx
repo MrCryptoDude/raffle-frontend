@@ -71,7 +71,7 @@ const GOVERNANCE_ACTIONS = [
 ];
 
 const CONTRACT_OPTIONS = [
-  { label: "Gas Prediction Market", value: addresses.gasMarket },
+  { label: "Gas Prediction Market", value: addresses.gasPredictionMarket },
   { label: "Raffle Manager", value: addresses.manager },
   { label: "RPS Manager", value: addresses.rps },
   { label: "Staking Rewards", value: addresses.staking },
