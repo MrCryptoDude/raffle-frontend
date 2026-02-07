@@ -273,6 +273,11 @@ body > *{
     font-size: 9px;
     letter-spacing: 0.06em;
   }
+  .stakeBtn{
+    min-width: 34px;
+    height: 30px;
+    padding: 0 12px;
+  }
   .burger{
     height: 34px;
     min-width: 34px;
