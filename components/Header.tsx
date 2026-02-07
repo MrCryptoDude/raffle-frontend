@@ -26,7 +26,7 @@ export function Header() {
 
         <div className="headerMid">
           <GamesMenu />
-          <Link className="btn btnBlue headerBtn" href="/stake">
+          <Link className="btn btnBlue stakeBtn" href="/stake">
             STAKE
           </Link>
           {wrongNetwork && (

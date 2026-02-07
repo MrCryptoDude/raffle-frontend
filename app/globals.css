@@ -226,6 +226,13 @@ body > *{
   padding: 0 12px;
   font-size: 10px;
 }
+/* ONLY the Stake button */
+.stakeBtn{
+  min-width: 38px;   /* change width here */
+  height: 33px;     /* keep height consistent */
+  padding: 0 16px;   /* change horizontal padding here */
+}
+
 
 .burger{
   height: 38px;
@@ -845,3 +852,5 @@ html, body {
   margin-right: 6px;
   margin-bottom: 6px;
 }
+
+
