@@ -22,35 +22,25 @@ export function ConnectWallet() {
 
   async function onConnect() {
     try {
-      // Connect with injected connector
       await connectAsync({ connector: injected() });
-      
-      // After connecting, check if we need to switch networks
-      // Small delay to let wagmi update chainId
       setTimeout(async () => {
         try {
           await switchChainAsync({ chainId: REQUIRED_CHAIN_ID });
-        } catch (e) {
-          console.log("Network switch prompt dismissed or failed:", e);
-        }
+        } catch {}
       }, 100);
-    } catch (e) {
-      console.error("Connect failed:", e);
-    }
+    } catch {}
   }
 
   async function onSwitchNetwork() {
     try {
       await switchChainAsync({ chainId: REQUIRED_CHAIN_ID });
-    } catch (e) {
-      console.error("Switch network failed:", e);
-    }
+    } catch {}
   }
 
   if (!isConnected) {
     return (
-      <button className="btn btnGold" onClick={onConnect} disabled={isPending}>
-        {isPending ? "CONNECTING..." : "CONNECT"}
+      <button className="btn btnGold headerBtn" onClick={onConnect} disabled={isPending}>
+        {isPending ? "..." : "CONNECT"}
       </button>
     );
   }
@@ -59,20 +49,15 @@ export function ConnectWallet() {
     <div className="walletRow">
       <span className="badge">{shortAddr(address)}</span>
 
-      {wrongNetwork && (
-        <button 
-          className="btn btnGold" 
-          style={{ marginLeft: 8 }}
-          onClick={onSwitchNetwork}
-          disabled={isSwitching}
-        >
-          {isSwitching ? "SWITCHING..." : "SWITCH TO BASE SEPOLIA"}
+      {wrongNetwork ? (
+        <button className="btn btnGold headerBtn" onClick={onSwitchNetwork} disabled={isSwitching}>
+          {isSwitching ? "..." : "SWITCH"}
+        </button>
+      ) : (
+        <button className="btn btnBlue headerBtn" onClick={() => disconnect()}>
+          EXIT
         </button>
       )}
-
-      <button className="btn btnBlue" onClick={() => disconnect()}>
-        DISCONNECT
-      </button>
     </div>
   );
 }

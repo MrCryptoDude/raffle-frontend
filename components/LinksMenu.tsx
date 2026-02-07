@@ -11,6 +11,7 @@ type Item = {
 
 const ITEMS: Item[] = [
   { label: "Home", href: "/" },
+  { label: "Whitepaper", href: "/whitepaper" },
   { label: "Governance", href: "/governance" },
   { label: "History", href: "/history" },
   {
@@ -21,7 +22,6 @@ const ITEMS: Item[] = [
   { label: "Discord", href: "https://discord.gg/WabmjKKx56", external: true },
   { label: "X", href: "https://x.com/OrdinalPrinter", external: true },
 ];
-
 
 export function LinksMenu() {
   const [open, setOpen] = React.useState(false);
@@ -39,7 +39,7 @@ export function LinksMenu() {
       <button
         className="btn burger"
         type="button"
-        aria-label="Links"
+        aria-label="Menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
@@ -60,7 +60,7 @@ export function LinksMenu() {
                   rel="noreferrer"
                   onClick={() => setOpen(false)}
                 >
-                  {it.label}
+                  {it.label} ↗
                 </a>
               ) : (
                 <Link

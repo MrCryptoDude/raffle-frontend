@@ -20,19 +20,21 @@ export function Header() {
         <div className="headerLeft">
           <LinksMenu />
           <Link href="/" className="brandLink hideMobile">
-            <div className="brand">BRRR RAFFLE ARCADE</div>
+            <div className="brand">BRRR PROTOCOL</div>
           </Link>
         </div>
 
         <div className="headerMid">
           <GamesMenu />
-
-          <Link className="btn btnBlue menuBtn" href="/stake">
+          <Link className="btn btnBlue headerBtn" href="/stake">
             STAKE
           </Link>
-
           {wrongNetwork && (
-            <button className="btn btnGold" onClick={() => switchChain?.({ chainId: REQUIRED_CHAIN_ID })} disabled={isPending}>
+            <button 
+              className="btn btnGold headerBtn" 
+              onClick={() => switchChain?.({ chainId: REQUIRED_CHAIN_ID })} 
+              disabled={isPending}
+            >
               {isPending ? "..." : "SWITCH"}
             </button>
           )}

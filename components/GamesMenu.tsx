@@ -16,14 +16,14 @@ export function GamesMenu() {
 
   return (
     <div className="linksWrap">
-      <button className="btn btnBlue menuBtn" onClick={() => setOpen((v) => !v)}>
+      <button className="btn btnBlue headerBtn" onClick={() => setOpen((v) => !v)}>
         GAMES
       </button>
 
       {open && (
         <>
           <div className="linksBackdrop" onClick={() => setOpen(false)} />
-          <div className="linksPopup" style={{ left: "50%", transform: "translateX(-50%)" }}>
+          <div className="linksPopup gamesPopup">
             <Link className="linksItem" href="/play" onClick={() => setOpen(false)}>
               RAFFLE
             </Link>

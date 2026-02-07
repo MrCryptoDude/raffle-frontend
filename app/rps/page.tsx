@@ -22,16 +22,16 @@ import { erc20Abi, rpsManagerAbi } from "../../lib/abis";
 
 const BRRR_DECIMALS = 18;
 
-const MIN_BET = 10n * 10n ** 18n; // 10 BRRR
-const MAX_BET = 25_000n * 10n ** 18n; // 25,000 BRRR
+const MIN_BET = 10n * 10n ** 18n;
+const MAX_BET = 25_000n * 10n ** 18n;
 
-type Move = 0 | 1 | 2; // 0 rock, 1 paper, 2 scissors
+type Move = 0 | 1 | 2;
 
 type Resolved = {
   gameId: bigint;
   playerMove: Move;
   houseMove: Move;
-  outcome: number; // 0 Pending, 1 PlayerWin, 2 HouseWin, 3 Tie
+  outcome: number;
   bet: bigint;
   fee: bigint;
   payoutToPlayer: bigint;
@@ -65,7 +65,6 @@ function moveToLabel(m?: number) {
   return "—";
 }
 
-/** deterministic PRNG from seed */
 function mulberry32(seed: number) {
   let t = seed >>> 0;
   return function () {
@@ -76,7 +75,6 @@ function mulberry32(seed: number) {
   };
 }
 
-/** generate matrix text block (rows x cols) */
 function makeMatrixBlock(seed: number, rows = 12, cols = 22) {
   const rnd = mulberry32(seed);
   const alphabet = "0123456789ABCDEF$#%&@+*";
@@ -91,33 +89,24 @@ function makeMatrixBlock(seed: number, rows = 12, cols = 22) {
   return lines;
 }
 
-/**
- * Neon, hollow "object" icons (Rock / Paper / Scissors)
- * with matrix decoding fill clipped into the silhouette.
- */
 function MatrixRpsIcon({
   side,
   move,
   isRevealing,
   seed,
-  size = 210,
 }: {
   side: "player" | "house";
   move: Move;
   isRevealing: boolean;
   seed: number;
-  size?: number;
 }) {
-  const clipId = React.useMemo(() => `clip_${side}_${move}`, [side, move]);
-  const glowId = React.useMemo(() => `glow_${side}`, [side]);
+  const clipId = React.useMemo(() => `clip_${side}_${move}_${seed}`, [side, move, seed]);
+  const glowId = React.useMemo(() => `glow_${side}_${seed}`, [side, seed]);
 
-  // 120x120 viewBox silhouettes
   const shape = React.useMemo(() => {
-    // ROCK: faceted crystal polygon
     if (move === 0) {
       return <path d="M22 72 L34 34 L54 18 L78 26 L96 52 L84 92 L54 104 L30 94 Z" />;
     }
-    // PAPER: sheet with folded corner + inner lines
     if (move === 1) {
       return (
         <>
@@ -130,7 +119,6 @@ function MatrixRpsIcon({
         </>
       );
     }
-    // SCISSORS: stylized scissors silhouette
     return (
       <>
         <path d="M44 26 a12 12 0 1 0 0.1 0 Z" />
@@ -147,8 +135,7 @@ function MatrixRpsIcon({
 
   return (
     <svg
-      width={size}
-      height={size}
+      className="rpsIcon"
       viewBox="0 0 120 120"
       style={{ display: "block", filter: `url(#${glowId})` }}
       aria-label={`${side} ${moveToLabel(move)}`}
@@ -159,12 +146,7 @@ function MatrixRpsIcon({
           <feColorMatrix
             in="blur"
             type="matrix"
-            values="
-              0 0 0 0 0
-              0 1 0 0 0
-              0 0 0 0 0
-              0 0 0 0.95 0
-            "
+            values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 0.95 0"
             result="greenGlow"
           />
           <feMerge>
@@ -174,38 +156,22 @@ function MatrixRpsIcon({
         </filter>
 
         <clipPath id={clipId}>
-          {/* For PAPER we want the outer sheet only in the clip */}
           {move === 1 ? <path d="M30 14 H74 L92 32 V106 H30 Z" /> : shape}
         </clipPath>
 
-        <pattern id={`scan_${side}`} width="6" height="6" patternUnits="userSpaceOnUse">
+        <pattern id={`scan_${side}_${seed}`} width="6" height="6" patternUnits="userSpaceOnUse">
           <path d="M0 0H6" stroke="rgba(0,255,140,0.12)" strokeWidth="1" />
         </pattern>
       </defs>
 
-      {/* Outline */}
-      <g
-        fill="none"
-        stroke="rgba(0,255,140,0.95)"
-        strokeWidth={3}
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      >
+      <g fill="none" stroke="rgba(0,255,140,0.95)" strokeWidth={3} strokeLinejoin="round" strokeLinecap="round">
         {shape}
       </g>
 
-      {/* Inner faint outline */}
-      <g
-        fill="none"
-        stroke="rgba(0,255,140,0.35)"
-        strokeWidth={1.2}
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      >
+      <g fill="none" stroke="rgba(0,255,140,0.35)" strokeWidth={1.2} strokeLinejoin="round" strokeLinecap="round">
         {shape}
       </g>
 
-      {/* Matrix fill clipped into silhouette */}
       <g clipPath={`url(#${clipId})`} opacity={isRevealing ? 1 : 0.82}>
         <rect x="0" y="0" width="120" height="120" fill="rgba(0,0,0,0.25)" />
         <g className={isRevealing ? "matrixFloat" : "matrixFloatSlow"}>
@@ -214,7 +180,7 @@ function MatrixRpsIcon({
               key={i}
               x={-6}
               y={18 + i * 9}
-              fontFamily='ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
+              fontFamily='ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace'
               fontSize="10"
               fill="rgba(0,255,140,0.9)"
               letterSpacing="1.5"
@@ -223,15 +189,14 @@ function MatrixRpsIcon({
             </text>
           ))}
         </g>
-        <rect x="0" y="0" width="120" height="120" fill={`url(#scan_${side})`} opacity="0.6" />
+        <rect x="0" y="0" width="120" height="120" fill={`url(#scan_${side}_${seed})`} opacity="0.6" />
         <rect x="0" y="0" width="120" height="120" fill="rgba(0,0,0,0.12)" />
       </g>
 
-      {/* Tag */}
       <text
         x={6}
         y={112}
-        fontFamily='ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
+        fontFamily='ui-monospace, monospace'
         fontSize="10"
         fill="rgba(0,255,140,0.75)"
         letterSpacing="1.2"
@@ -265,7 +230,6 @@ export default function RpsPage() {
 
   const [resolved, setResolved] = React.useState<Resolved | null>(null);
 
-  // BRRR token is addresses.raffle (NEXT_PUBLIC_RAFFLE)
   const brrrToken = addresses.raffle;
 
   const betWei = React.useMemo(() => {
@@ -285,22 +249,18 @@ export default function RpsPage() {
     if (ms > 0) setTimeout(() => setStatus(""), ms);
   }
 
-  // Helper to ensure correct network before any action
   async function ensureCorrectNetwork(): Promise<boolean> {
     if (!isConnected) return false;
     if (!wrongNetwork) return true;
-    
     try {
       await switchChainAsync({ chainId: REQUIRED_CHAIN_ID });
       return true;
-    } catch (e) {
-      console.error("Failed to switch network:", e);
+    } catch {
       setEphemeralStatus("Please switch to Base Sepolia to continue.", 9000);
       return false;
     }
   }
 
-  // Allowance BRRR -> RPS (spender is addresses.rps)
   const allowanceQ = useReadContract({
     chainId: REQUIRED_CHAIN_ID,
     abi: erc20Abi,
@@ -314,13 +274,9 @@ export default function RpsPage() {
   });
 
   const allowance = allowanceQ.data ?? 0n;
-
   const needsApproval = !!address && !wrongNetwork && betWei > 0n && allowance < betWei;
-
   const disableAll = !isConnected || isPending || isRevealing;
   const disableAction = disableAll || betWei === 0n;
-
-  // Button states
   const approveEnabled = !disableAction && needsApproval && !pendingGameId;
   const moveSelectionEnabled = !disableAction && !needsApproval && !pendingGameId;
   const playEnabled = !disableAll && !needsApproval && selectedMove !== null && !pendingGameId;
@@ -328,16 +284,12 @@ export default function RpsPage() {
   async function handleSwitchNetwork() {
     try {
       await switchChainAsync({ chainId: REQUIRED_CHAIN_ID });
-    } catch (e) {
-      console.error("Switch network failed:", e);
-    }
+    } catch {}
   }
 
   async function approve() {
     const networkOk = await ensureCorrectNetwork();
-    if (!networkOk) return;
-
-    if (!address) return;
+    if (!networkOk || !address) return;
     if (betWei < MIN_BET || betWei > MAX_BET) {
       setEphemeralStatus("ERROR: Bet out of range.");
       return;
@@ -352,14 +304,11 @@ export default function RpsPage() {
         functionName: "approve",
         args: [addresses.rps, maxUint256],
       });
-
       if (!publicClient) throw new Error("No public client");
       await publicClient.waitForTransactionReceipt({ hash });
-
-      setEphemeralStatus(`APPROVED (tx: ${hash.slice(0, 10)}…)`, 9000);
+      setEphemeralStatus(`APPROVED`, 9000);
     } catch (e: any) {
       setEphemeralStatus(`ERROR: ${e?.shortMessage || e?.message || "TX failed"}`, 12000);
-      console.error(e);
     }
   }
 
@@ -369,10 +318,8 @@ export default function RpsPage() {
     setPlayerMove(move);
   }
 
-  // Start matrix flickering animation
   function startRevealFlicker() {
     setIsRevealing(true);
-
     const id = setInterval(() => {
       setPlayerSeed((s) => (s + 1337) >>> 0);
       setHouseSeed((s) => (s + 4242) >>> 0);
@@ -394,42 +341,30 @@ export default function RpsPage() {
     };
   }
 
-  // Poll for game settlement
   async function pollForSettlement(gameId: bigint): Promise<any> {
     if (!publicClient) throw new Error("No public client");
-
-    for (let i = 0; i < 60; i++) { // Poll for up to 60 seconds
+    for (let i = 0; i < 60; i++) {
       const g = (await publicClient.readContract({
         address: addresses.rps,
         abi: rpsManagerAbi,
         functionName: "games",
         args: [gameId],
       })) as any;
-
       const settled = Boolean(g.settled ?? g[8]);
-      if (settled) {
-        return g;
-      }
-
-      // Wait 1 second before next poll
+      if (settled) return g;
       await new Promise((r) => setTimeout(r, 1000));
     }
-
     throw new Error("Timeout waiting for settlement");
   }
 
-  // Single Play action: play() then wait for automation to settle
   async function play() {
     const networkOk = await ensureCorrectNetwork();
-    if (!networkOk) return;
-
-    if (!address || selectedMove === null) return;
+    if (!networkOk || !address || selectedMove === null) return;
 
     if (betWei < MIN_BET || betWei > MAX_BET) {
       setEphemeralStatus("ERROR: Bet out of range.");
       return;
     }
-
     if (allowance < betWei) {
       setEphemeralStatus("ERROR: Approve first.");
       return;
@@ -452,9 +387,7 @@ export default function RpsPage() {
       if (!publicClient) throw new Error("No public client");
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
 
-      // Decode GameStarted for gameId
       let gid: bigint | null = null;
-
       for (const log of receipt.logs) {
         try {
           const decoded = decodeEventLog({
@@ -462,7 +395,6 @@ export default function RpsPage() {
             data: log.data,
             topics: log.topics,
           });
-
           if (decoded.eventName === "GameStarted") {
             const args = decoded.args as any;
             if (args?.gameId !== undefined) {
@@ -470,13 +402,10 @@ export default function RpsPage() {
               break;
             }
           }
-        } catch {
-          // ignore non-matching logs
-        }
+        } catch {}
       }
 
       if (!gid) {
-        // fallback: read gameCount
         const gc = (await publicClient.readContract({
           address: addresses.rps,
           abi: rpsManagerAbi,
@@ -487,27 +416,20 @@ export default function RpsPage() {
       }
 
       setPendingGameId(gid);
-      setStatus(`GAME #${gid.toString()} — Waiting for settlement...`);
+      setStatus(`GAME #${gid.toString()} — Settling...`);
 
-      // Poll for settlement (Chainlink Automation will settle it)
       const g = await pollForSettlement(gid);
-
-      // Parse game result
       const bet = BigInt(g.bet ?? g[1]);
       const pm = Number(g.move ?? g.playerMove ?? g[2]) as Move;
       const hm = Number(g.houseMove ?? g[3]) as Move;
       const outcome = Number(g.outcome ?? g[5]) as number;
 
-      // Economics
-      const fee = (bet * 100n) / 10_000n; // 1%
+      const fee = (bet * 100n) / 10_000n;
       let payout = 0n;
       if (outcome === 3) {
-        const houseTake = bet / 2n;
-        payout = bet - houseTake - fee;
+        payout = bet - bet / 2n - fee;
       } else if (outcome === 1) {
         payout = bet * 2n - fee;
-      } else {
-        payout = 0n;
       }
 
       const got: Resolved = {
@@ -522,24 +444,19 @@ export default function RpsPage() {
       };
 
       flicker.stopWithFinal(got.houseMove);
-
       setResolved(got);
       setPendingGameId(null);
       setSelectedMove(null);
-
       setEphemeralStatus(`GAME #${got.gameId.toString()} — ${outcomeToLabel(got.outcome)}`, 9000);
     } catch (e: any) {
       flicker.cancel();
       setPendingGameId(null);
-
-      const msg = (e?.shortMessage || e?.message || "TX failed/cancelled") as string;
+      const msg = (e?.shortMessage || e?.message || "TX failed") as string;
       if (msg.toLowerCase().includes("timeout")) {
-        setEphemeralStatus("Settlement taking longer than expected. Check back soon.", 12000);
+        setEphemeralStatus("Settlement taking longer than expected.", 12000);
       } else {
         setEphemeralStatus(`ERROR: ${msg}`, 12000);
       }
-
-      console.error(e);
     }
   }
 
@@ -551,20 +468,6 @@ export default function RpsPage() {
   return (
     <main className="screen">
       <style>{`
-        .rpsWrap { max-width: 1060px; margin: 18px auto 0; }
-        .rpsHandsWrap { position: relative; overflow: hidden; }
-        .rpsHandsRow { display:flex; align-items:center; justify-content:space-between; gap:18px; }
-        .rpsSide { width: 42%; }
-        .rpsCenter { width: 16%; text-align:center; }
-
-        .rpsLabel {
-          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-          letter-spacing: 0.14em;
-          opacity: 0.82;
-          text-transform: uppercase;
-        }
-        .rpsAddress { opacity: 0.85; }
-
         @keyframes matrixFloat {
           0% { transform: translateY(0px); opacity: 0.95; }
           50% { transform: translateY(-6px); opacity: 1; }
@@ -577,132 +480,143 @@ export default function RpsPage() {
         }
         .matrixFloat { animation: matrixFloat 0.55s ease-in-out infinite; }
         .matrixFloatSlow { animation: matrixFloatSlow 2.0s ease-in-out infinite; }
-
-        .rpsCenterGlyph {
-          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-          letter-spacing:0.14em;
-          opacity:0.82;
-          white-space:nowrap;
+        
+        .rpsArena {
+          display: grid;
+          grid-template-columns: 1fr auto 1fr;
+          gap: 16px;
+          align-items: center;
+          padding: 16px;
         }
-
-        .neonDivider {
-          height: 1px;
-          background: linear-gradient(90deg, rgba(0,255,140,0), rgba(0,255,140,0.65), rgba(0,255,140,0));
-          margin: 14px 0;
+        
+        .rpsSide {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
         }
-
-        .hintNeon {
-          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-          color: rgba(0,255,140,0.86);
-          letter-spacing: 0.12em;
-          text-transform: uppercase;
+        
+        .rpsIcon {
+          width: 140px;
+          height: 140px;
+          max-width: 100%;
         }
-
-        .mutedNeon { color: rgba(0,255,140,0.55); }
-
-        .rowTitle {
-          text-align:center;
-          margin-bottom: 10px;
-          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-          letter-spacing: 0.12em;
-          text-transform: uppercase;
-          opacity: 0.8;
+        
+        .rpsCenter {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 8px;
+          padding: 0 8px;
         }
-
+        
+        .rpsVs {
+          font-size: 12px;
+          letter-spacing: 0.2em;
+          color: rgba(0,255,140,0.7);
+        }
+        
+        .rpsDivider {
+          width: 1px;
+          height: 60px;
+          background: linear-gradient(180deg, transparent, rgba(0,255,140,0.5), transparent);
+        }
+        
         .moveBtn {
+          flex: 1;
           transition: all 0.2s ease;
         }
         .moveBtn.selected {
           box-shadow: 0 0 20px rgba(0, 255, 140, 0.5);
-          transform: scale(1.05);
+          transform: scale(1.02);
+          border-color: rgba(0, 255, 140, 1);
+        }
+        
+        @media (max-width: 600px) {
+          .rpsArena {
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: auto auto;
+            gap: 12px;
+            padding: 12px;
+          }
+          
+          .rpsCenter {
+            grid-column: 1 / -1;
+            flex-direction: row;
+            justify-content: center;
+            order: -1;
+            padding: 8px 0;
+          }
+          
+          .rpsDivider {
+            width: 40px;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(0,255,140,0.5), transparent);
+          }
+          
+          .rpsIcon {
+            width: 100px;
+            height: 100px;
+          }
+        }
+        
+        @media (max-width: 400px) {
+          .rpsIcon {
+            width: 80px;
+            height: 80px;
+          }
         }
       `}</style>
 
       <div className="panel px-5 py-4 text-center marqueePanel">
-        <div className="h1">RPS</div>
-        <div className="muted tiny mt-2">HOUSE RPS — 1% TO STAKERS</div>
+        <div className="h1">ROCK PAPER SCISSORS</div>
+        <div className="muted tiny mt-2">1% FEE TO STAKERS</div>
         {status && <div className="muted tiny mt-2">{status}</div>}
         {wrongNetwork && (
           <div className="mt-2">
-            <div className="danger tiny">SWITCH TO BASE SEPOLIA</div>
-            <button 
-              className="btn btnGold mt-2" 
-              onClick={handleSwitchNetwork}
-              disabled={isSwitchingNetwork}
-            >
-              {isSwitchingNetwork ? "SWITCHING..." : "SWITCH NETWORK"}
+            <button className="btn btnGold" onClick={handleSwitchNetwork} disabled={isSwitchingNetwork}>
+              {isSwitchingNetwork ? "SWITCHING..." : "SWITCH TO BASE SEPOLIA"}
             </button>
           </div>
         )}
-        <div className="muted tiny mt-1">RPS: {addresses.rps}</div>
       </div>
 
-      {/* Icons */}
-      <div className="rpsWrap px-4">
-        <div className="panel rpsHandsWrap">
-          <div className="rpsHandsRow">
-            <div className="rpsSide" style={{ textAlign: "left" }}>
-              <div className="muted tiny rpsLabel">PLAYER</div>
-              <div className="tiny rpsAddress">{address ? shortAddr(address) : "—"}</div>
-              <div style={{ marginTop: 10 }}>
-                <MatrixRpsIcon
-                  side="player"
-                  move={playerMove}
-                  isRevealing={isRevealing}
-                  seed={playerSeed}
-                  size={220}
-                />
-              </div>
-              <div className="muted tiny mt-2">MOVE: {moveToLabel(playerMove)}</div>
-            </div>
-
-            <div className="rpsCenter">
-              <div className="rpsCenterGlyph muted tiny" style={{ marginTop: 10 }}>
-                {"<"}
-                {"<"}
-                {"<"}
-                {"<"}
-                {"<"}{" "}
-                {isRevealing ? "REVEAL" : "VS"}{" "}
-                {">"}
-                {">"}
-                {">"}
-                {">"}
-                {">"}
-              </div>
-              <div className="neonDivider" />
-              <div className="hintNeon tiny">
-                {isRevealing ? "SETTLING…" : pendingGameId ? "PENDING" : "READY"}
-              </div>
-              <div className="muted tiny mt-2">{pendingGameId ? `Game #${pendingGameId.toString()}` : "—"}</div>
-            </div>
-
-            <div className="rpsSide" style={{ textAlign: "right" }}>
-              <div className="muted tiny rpsLabel">HOUSE</div>
-              <div className="tiny rpsAddress">HOUSE</div>
-              <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
-                <MatrixRpsIcon
-                  side="house"
-                  move={houseMove}
-                  isRevealing={isRevealing}
-                  seed={houseSeed}
-                  size={220}
-                />
-              </div>
-              <div className="muted tiny mt-2">MOVE: {moveToLabel(houseMove)}</div>
-            </div>
+      {/* Arena */}
+      <div className="panel mt-4 rpsArena">
+        <div className="rpsSide">
+          <div className="muted tiny">PLAYER</div>
+          <div className="tiny" style={{ opacity: 0.7 }}>{address ? shortAddr(address) : "—"}</div>
+          <div style={{ marginTop: 8 }}>
+            <MatrixRpsIcon side="player" move={playerMove} isRevealing={isRevealing} seed={playerSeed} />
           </div>
+          <div className="muted tiny mt-2">{moveToLabel(playerMove)}</div>
+        </div>
+
+        <div className="rpsCenter">
+          <div className="rpsVs">{isRevealing ? "⚡" : "VS"}</div>
+          <div className="rpsDivider" />
+          <div className="tiny" style={{ color: "rgba(0,255,140,0.6)" }}>
+            {isRevealing ? "SETTLING" : pendingGameId ? `#${pendingGameId}` : "READY"}
+          </div>
+        </div>
+
+        <div className="rpsSide">
+          <div className="muted tiny">HOUSE</div>
+          <div className="tiny" style={{ opacity: 0.7 }}>TREASURY</div>
+          <div style={{ marginTop: 8 }}>
+            <MatrixRpsIcon side="house" move={houseMove} isRevealing={isRevealing} seed={houseSeed} />
+          </div>
+          <div className="muted tiny mt-2">{moveToLabel(houseMove)}</div>
         </div>
       </div>
 
       {/* Controls */}
-      <div className="panel potCard cabinetPot" style={{ maxWidth: 620, margin: "18px auto 0" }}>
-        <div className="h2">PLAY</div>
+      <div className="panel potCard cabinetPot mt-4" style={{ maxWidth: 560, margin: "16px auto 0" }}>
+        <div className="h2 text-center">PLAY</div>
 
-        {/* Step 1: Bet Amount */}
         <div className="mt-3 inset statBox">
-          <div className="muted tiny">STEP 1: BET AMOUNT (BRRR)</div>
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <div className="muted tiny">BET AMOUNT (BRRR)</div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6 }}>
             <input
               className="input"
               value={betInput}
@@ -712,105 +626,70 @@ export default function RpsPage() {
               placeholder="10"
               style={{ flex: 1 }}
             />
-            <div className="muted tiny" style={{ whiteSpace: "nowrap" }}>
-              min 10 / max 25,000
-            </div>
+            <span className="muted tiny">10–25k</span>
           </div>
-          {betWei > 0n && <div className="muted tiny mt-2">Parsed: {betPretty} BRRR</div>}
         </div>
 
-        {/* Step 2: Approve (if needed) */}
         {needsApproval && (
-          <div className="mt-4">
-            <div className="rowTitle tiny">STEP 2: Approve BRRR</div>
-            <button
-              className="btn btnMint w-full"
-              onClick={approve}
-              disabled={!approveEnabled}
-            >
+          <div className="mt-3">
+            <button className="btn btnMint w-full" onClick={approve} disabled={!approveEnabled}>
               APPROVE BRRR
             </button>
-            <div className="muted tiny mt-2" style={{ textAlign: "center" }}>
-              Allowance: {formatUnits(allowance, BRRR_DECIMALS)} / Bet: {betPretty}
-            </div>
           </div>
         )}
 
-        {/* Step 3: Choose Move */}
-        <div className="mt-4">
-          <div className="rowTitle tiny">{needsApproval ? "STEP 3" : "STEP 2"}: Choose Your Move</div>
-          <div className="flex gap-2">
-            <button 
-              className={`btn btnGold flex-1 moveBtn ${selectedMove === 0 ? 'selected' : ''}`} 
-              onClick={() => selectMove(0)} 
+        <div className="mt-3">
+          <div className="muted tiny text-center mb-2">CHOOSE YOUR MOVE</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              className={`btn btnGold moveBtn ${selectedMove === 0 ? "selected" : ""}`}
+              onClick={() => selectMove(0)}
               disabled={!moveSelectionEnabled}
             >
               🪨 ROCK
             </button>
-            <button 
-              className={`btn btnGold flex-1 moveBtn ${selectedMove === 1 ? 'selected' : ''}`} 
-              onClick={() => selectMove(1)} 
+            <button
+              className={`btn btnGold moveBtn ${selectedMove === 1 ? "selected" : ""}`}
+              onClick={() => selectMove(1)}
               disabled={!moveSelectionEnabled}
             >
               📄 PAPER
             </button>
-            <button 
-              className={`btn btnGold flex-1 moveBtn ${selectedMove === 2 ? 'selected' : ''}`} 
-              onClick={() => selectMove(2)} 
+            <button
+              className={`btn btnGold moveBtn ${selectedMove === 2 ? "selected" : ""}`}
+              onClick={() => selectMove(2)}
               disabled={!moveSelectionEnabled}
             >
               ✂️ SCISSORS
             </button>
           </div>
-          {selectedMove !== null && (
-            <div className="muted tiny mt-2" style={{ textAlign: "center" }}>
-              Selected: {moveToLabel(selectedMove)}
-            </div>
-          )}
         </div>
 
-        {/* Step 4: Play */}
-        <div className="mt-4">
-          <div className="rowTitle tiny">{needsApproval ? "STEP 4" : "STEP 3"}: Play!</div>
-          <button
-            className="btn btnBlue w-full"
-            onClick={play}
-            disabled={!playEnabled}
-          >
+        <div className="mt-3">
+          <button className="btn btnBlue w-full" onClick={play} disabled={!playEnabled}>
             {isRevealing ? "SETTLING..." : "🎮 PLAY"}
           </button>
-          <div className="muted tiny mt-2" style={{ textAlign: "center" }}>
-            {selectedMove === null 
-              ? "Select a move above to enable play."
-              : needsApproval
-              ? "Approve BRRR first."
-              : "Click to play! Settlement is automatic via Chainlink."}
-          </div>
         </div>
 
-        {/* Outcome panel */}
         {resolved && (
           <div className="mt-4 inset statBox">
-            <div className="muted tiny">OUTCOME</div>
-
-            <div className="tiny mt-1">
-              Player: {moveToLabel(resolved.playerMove)} vs House: {moveToLabel(resolved.houseMove)}
-            </div>
-
-            <div className="tiny mt-1" style={{ 
-              color: resolved.outcome === 1 ? '#00ff8c' : resolved.outcome === 2 ? '#ff6b6b' : '#ffd700',
-              fontWeight: 'bold'
-            }}>
+            <div
+              className="h2 text-center"
+              style={{
+                color: resolved.outcome === 1 ? "#00ff8c" : resolved.outcome === 2 ? "#ff6b6b" : "#ffd700",
+              }}
+            >
               {outcomeToLabel(resolved.outcome)}
             </div>
-
-            <div className="muted tiny mt-3">ECONOMICS</div>
-            <div className="tiny mt-1">Bet: {formatUnits(resolved.bet, BRRR_DECIMALS)} BRRR</div>
-            <div className="tiny mt-1">Fee (to stakers): {formatUnits(resolved.fee, BRRR_DECIMALS)} BRRR</div>
-            <div className="tiny mt-1">Payout to player: {formatUnits(resolved.payoutToPlayer, BRRR_DECIMALS)} BRRR</div>
-            {houseNet !== null && (
-              <div className="tiny mt-1">House net: {formatUnits(houseNet, BRRR_DECIMALS)} BRRR</div>
-            )}
+            <div className="tiny mt-2 text-center">
+              {moveToLabel(resolved.playerMove)} vs {moveToLabel(resolved.houseMove)}
+            </div>
+            <div className="muted tiny mt-3">
+              Bet: {formatUnits(resolved.bet, BRRR_DECIMALS)} BRRR
+            </div>
+            <div className="muted tiny">
+              Payout: {formatUnits(resolved.payoutToPlayer, BRRR_DECIMALS)} BRRR
+            </div>
           </div>
         )}
       </div>
