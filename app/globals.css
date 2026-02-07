@@ -24,10 +24,16 @@
   --led3: rgba(180,255,125,0.70);
 }
 
-body { position: relative; z-index: 1; }
+html {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
 
-html,body{
-  height:100%;
+body {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  overflow-x: hidden;
   background:
     radial-gradient(1200px 600px at 50% 0%, rgba(125,255,178,0.14), transparent 55%),
     radial-gradient(1000px 560px at 30% 20%, rgba(92,255,128,0.10), transparent 60%),

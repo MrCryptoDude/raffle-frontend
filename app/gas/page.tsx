@@ -10,11 +10,11 @@ const BASE_SEPOLIA_CHAIN_ID = 84532;
 
 const MARKET_ADDRESS =
   (process.env.NEXT_PUBLIC_GAS_PREDICTION_MARKET as `0x${string}` | undefined) ??
-  ("0x0B92eAeF05D2cA6d967726AEaDF18CdC442ccfa8" as const);
+  ("0x0461c751ccf343E91B33681467f84eBB4201579A" as const);
 
 const USDC_ADDRESS_ENV =
   (process.env.NEXT_PUBLIC_USDC as `0x${string}` | undefined) ??
-  ("0xe92BF249b7538340d53E4D30008c82C852923923" as const);
+  ("0x4971192F0a5D300a1aC16a39630C865737024458" as const);
 
 const L1_SEPOLIA_RPC_URL =
   (process.env.NEXT_PUBLIC_L1_SEPOLIA_RPC_URL as string | undefined) ??
@@ -581,7 +581,19 @@ export default function GasMarketPage() {
               {isIdle ? `Start Game & Bet ${side === "long" ? "Long" : "Short"}` : `Bet ${side === "long" ? "Long" : "Short"}`}
             </button>
 
-            {isWaiting && <div style={{ marginTop: 10, fontSize: 12, color: "rgba(255,200,100,0.95)" }}>Betting closed - waiting for Chainlink</div>}
+            {isWaiting && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 12, color: "rgba(255,200,100,0.95)", marginBottom: 8 }}>Betting closed - waiting for settlement</div>
+                <button 
+                  className={styles.tabBtn} 
+                  onClick={onSettle} 
+                  disabled={wrongChain || txBusy || !address}
+                  style={{ padding: "10px 16px", borderRadius: 12, backgroundColor: "rgba(255,200,100,0.15)", borderColor: "rgba(255,200,100,0.3)" }}
+                >
+                  ⚡ Manual Settle (backup)
+                </button>
+              </div>
+            )}
             {exceedsBalance && <div style={{ marginTop: 10, fontSize: 12, color: "rgba(255,140,140,0.95)" }}>Exceeds balance</div>}
             {txError && <div style={{ marginTop: 10, fontSize: 12, color: "rgba(255,140,140,0.95)" }}>{txError}</div>}
             {txSuccess && <div style={{ marginTop: 10, fontSize: 12, color: "rgba(140,255,180,0.95)" }}>{txSuccess}</div>}
@@ -598,6 +610,26 @@ export default function GasMarketPage() {
               Long wins if settlement {">"} strike · Short wins if settlement {"<"} strike
             </div>
           </div>
+
+          {/* Debug Panel */}
+          <details style={{ marginTop: 12, fontSize: 11, color: "rgba(255,255,255,0.5)" }}>
+            <summary style={{ cursor: "pointer", padding: "8px 0" }}>Debug Info</summary>
+            <div style={{ padding: 12, backgroundColor: "rgba(0,0,0,0.2)", borderRadius: 8, fontFamily: "monospace", lineHeight: 1.8 }}>
+              <div>Market: {MARKET_ADDRESS}</div>
+              <div>USDC: {usdcAddress}</div>
+              <div>Phase: {phase ?? "undefined"} ({isIdle ? "Idle" : isBetting ? "Betting" : isWaiting ? "Waiting" : "?"})</div>
+              <div>Game ID: {gameId?.toString() ?? "none"}</div>
+              <div>L1 Block: {currentL1?.toString() ?? "undefined"}</div>
+              <div>Bet Start L1: {betStartL1?.toString() ?? "undefined"}</div>
+              <div>Bet End L1: {betEndL1?.toString() ?? "undefined"}</div>
+              <div>Blocks Left: {blocksLeft?.toString() ?? "undefined"}</div>
+              <div>Strike: {strikeWei?.toString() ?? "undefined"} wei</div>
+              <div>Current Basefee: {currentBasefeeWei?.toString() ?? "undefined"} wei</div>
+              <div>Long Pool: {longPoolTotal?.toString()} | Short Pool: {shortPoolTotal?.toString()}</div>
+              <div>Your Balance: {usdcBalance?.toString()} | Allowance: {allowance?.toString()}</div>
+              <div>Amount Wei: {amountWei.toString()} | Needs Approval: {needsApproval ? "yes" : "no"}</div>
+            </div>
+          </details>
 
         </div>
       </div>
