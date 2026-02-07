@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useAccount, useReadContract, useWriteContract, useChainId } from "wagmi";
+import { useAccount, useReadContract, useWriteContract, useChainId, useSwitchChain } from "wagmi";
 import { formatUnits, parseUnits } from "viem";
 
 import {
@@ -24,6 +24,7 @@ function isAddress(x: unknown): x is `0x${string}` {
 export default function StakePage() {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
+  const { switchChainAsync, isPending: isSwitchingNetwork } = useSwitchChain();
   const wrongNetwork = isConnected && chainId !== REQUIRED_CHAIN_ID;
 
   const { writeContractAsync } = useWriteContract();
@@ -38,6 +39,21 @@ export default function StakePage() {
 
   const addr0 = "0x0000000000000000000000000000000000000000" as const;
   const user = (address ?? addr0) as `0x${string}`;
+
+  // Helper to ensure correct network before any action
+  async function ensureCorrectNetwork(): Promise<boolean> {
+    if (!isConnected) return false;
+    if (!wrongNetwork) return true;
+    
+    try {
+      await switchChainAsync({ chainId: REQUIRED_CHAIN_ID });
+      return true;
+    } catch (e) {
+      console.error("Failed to switch network:", e);
+      setStatus("Please switch to Base Sepolia to continue.");
+      return false;
+    }
+  }
 
   // ---------- Reads ----------
   const raffleBalQ = useReadContract({
@@ -235,6 +251,10 @@ export default function StakePage() {
       : "—";
 
   async function tx(label: string, fn: () => Promise<unknown>) {
+    // Ensure correct network before any transaction
+    const networkOk = await ensureCorrectNetwork();
+    if (!networkOk) return;
+
     try {
       setStatus(label);
       const res: any = await fn();
@@ -248,7 +268,7 @@ export default function StakePage() {
     }
   }
 
-  const writesEnabled = !!address && !wrongNetwork && hasAddresses;
+  const writesEnabled = !!address && hasAddresses;
 
   async function approve() {
     if (!writesEnabled || amountWei === 0n) return;
@@ -312,6 +332,14 @@ export default function StakePage() {
     setAmount(formatUnits(stakedBalQ.data, RAFFLE_DECIMALS));
   }
 
+  async function handleSwitchNetwork() {
+    try {
+      await switchChainAsync({ chainId: REQUIRED_CHAIN_ID });
+    } catch (e) {
+      console.error("Switch network failed:", e);
+    }
+  }
+
   return (
     <main className="screen">
       <div className="panel px-5 py-4 text-center marqueePanel">
@@ -335,6 +363,13 @@ export default function StakePage() {
           <div className="muted tiny mt-1">
             Switch to Base Sepolia (Chain ID {REQUIRED_CHAIN_ID}) to use staking.
           </div>
+          <button 
+            className="btn btnGold mt-3" 
+            onClick={handleSwitchNetwork}
+            disabled={isSwitchingNetwork}
+          >
+            {isSwitchingNetwork ? "SWITCHING..." : "SWITCH TO BASE SEPOLIA"}
+          </button>
         </div>
       )}
 

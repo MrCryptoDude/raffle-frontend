@@ -7,6 +7,7 @@ import {
   useReadContract,
   useWriteContract,
   usePublicClient,
+  useSwitchChain,
 } from "wagmi";
 import {
   formatUnits,
@@ -244,6 +245,7 @@ function MatrixRpsIcon({
 export default function RpsPage() {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
+  const { switchChainAsync, isPending: isSwitchingNetwork } = useSwitchChain();
   const wrongNetwork = isConnected && chainId !== REQUIRED_CHAIN_ID;
 
   const publicClient = usePublicClient({ chainId: REQUIRED_CHAIN_ID });
@@ -251,8 +253,9 @@ export default function RpsPage() {
 
   const [betInput, setBetInput] = React.useState<string>("10");
   const [status, setStatus] = React.useState<string>("");
+  const [selectedMove, setSelectedMove] = React.useState<Move | null>(null);
 
-  const [lastGameId, setLastGameId] = React.useState<bigint | null>(null);
+  const [pendingGameId, setPendingGameId] = React.useState<bigint | null>(null);
   const [playerMove, setPlayerMove] = React.useState<Move>(0);
   const [houseMove, setHouseMove] = React.useState<Move>(0);
 
@@ -282,6 +285,21 @@ export default function RpsPage() {
     if (ms > 0) setTimeout(() => setStatus(""), ms);
   }
 
+  // Helper to ensure correct network before any action
+  async function ensureCorrectNetwork(): Promise<boolean> {
+    if (!isConnected) return false;
+    if (!wrongNetwork) return true;
+    
+    try {
+      await switchChainAsync({ chainId: REQUIRED_CHAIN_ID });
+      return true;
+    } catch (e) {
+      console.error("Failed to switch network:", e);
+      setEphemeralStatus("Please switch to Base Sepolia to continue.", 9000);
+      return false;
+    }
+  }
+
   // Allowance BRRR -> RPS (spender is addresses.rps)
   const allowanceQ = useReadContract({
     chainId: REQUIRED_CHAIN_ID,
@@ -297,21 +315,29 @@ export default function RpsPage() {
 
   const allowance = allowanceQ.data ?? 0n;
 
-  // Casino rules:
   const needsApproval = !!address && !wrongNetwork && betWei > 0n && allowance < betWei;
 
-  const disableAll = !isConnected || wrongNetwork || isPending;
+  const disableAll = !isConnected || isPending || isRevealing;
   const disableAction = disableAll || betWei === 0n;
 
-  // Buttons are ALWAYS visible in rows (your approach)
-  const approveEnabled = !disableAction && !isRevealing && needsApproval && !lastGameId;
-  const chooseEnabled = !disableAction && !isRevealing && !needsApproval && !lastGameId;
+  // Button states
+  const approveEnabled = !disableAction && needsApproval && !pendingGameId;
+  const moveSelectionEnabled = !disableAction && !needsApproval && !pendingGameId;
+  const playEnabled = !disableAll && !needsApproval && selectedMove !== null && !pendingGameId;
 
-  // IMPORTANT PATCH: PLAY depends ONLY on gameId (no VRF gating in UI)
-  const playEnabled = !disableAll && !isRevealing && !!lastGameId;
+  async function handleSwitchNetwork() {
+    try {
+      await switchChainAsync({ chainId: REQUIRED_CHAIN_ID });
+    } catch (e) {
+      console.error("Switch network failed:", e);
+    }
+  }
 
   async function approve() {
-    if (!address || wrongNetwork) return;
+    const networkOk = await ensureCorrectNetwork();
+    if (!networkOk) return;
+
+    if (!address) return;
     if (betWei < MIN_BET || betWei > MAX_BET) {
       setEphemeralStatus("ERROR: Bet out of range.");
       return;
@@ -337,9 +363,67 @@ export default function RpsPage() {
     }
   }
 
-  // TX 1/2: play(bet, move)
-  async function chooseMove(move: Move) {
-    if (!address || wrongNetwork) return;
+  function selectMove(move: Move) {
+    if (!moveSelectionEnabled) return;
+    setSelectedMove(move);
+    setPlayerMove(move);
+  }
+
+  // Start matrix flickering animation
+  function startRevealFlicker() {
+    setIsRevealing(true);
+
+    const id = setInterval(() => {
+      setPlayerSeed((s) => (s + 1337) >>> 0);
+      setHouseSeed((s) => (s + 4242) >>> 0);
+      setHouseMove(Math.floor(Math.random() * 3) as Move);
+    }, 120);
+
+    return {
+      stopWithFinal: (finalHouse: Move) => {
+        clearInterval(id);
+        setIsRevealing(false);
+        setHouseMove(finalHouse);
+        setPlayerSeed((s) => (s + 777) >>> 0);
+        setHouseSeed((s) => (s + 999) >>> 0);
+      },
+      cancel: () => {
+        clearInterval(id);
+        setIsRevealing(false);
+      },
+    };
+  }
+
+  // Poll for game settlement
+  async function pollForSettlement(gameId: bigint): Promise<any> {
+    if (!publicClient) throw new Error("No public client");
+
+    for (let i = 0; i < 60; i++) { // Poll for up to 60 seconds
+      const g = (await publicClient.readContract({
+        address: addresses.rps,
+        abi: rpsManagerAbi,
+        functionName: "games",
+        args: [gameId],
+      })) as any;
+
+      const settled = Boolean(g.settled ?? g[8]);
+      if (settled) {
+        return g;
+      }
+
+      // Wait 1 second before next poll
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+
+    throw new Error("Timeout waiting for settlement");
+  }
+
+  // Single Play action: play() then wait for automation to settle
+  async function play() {
+    const networkOk = await ensureCorrectNetwork();
+    if (!networkOk) return;
+
+    if (!address || selectedMove === null) return;
 
     if (betWei < MIN_BET || betWei > MAX_BET) {
       setEphemeralStatus("ERROR: Bet out of range.");
@@ -351,22 +435,18 @@ export default function RpsPage() {
       return;
     }
 
+    const flicker = startRevealFlicker();
+
     try {
       setResolved(null);
-
-      // lock player selection immediately (UI feel)
-      setPlayerMove(move);
-      setHouseMove(0);
-
-      // IMPORTANT PATCH: do NOT set lastGameId until TX succeeds
-      setStatus("1/2: PLAYING…");
+      setStatus("PLAYING…");
 
       const hash = await writeContractAsync({
         chainId: REQUIRED_CHAIN_ID,
         abi: rpsManagerAbi,
         address: addresses.rps,
         functionName: "play",
-        args: [betWei, move],
+        args: [betWei, selectedMove],
       });
 
       if (!publicClient) throw new Error("No public client");
@@ -406,150 +486,19 @@ export default function RpsPage() {
         gid = gc;
       }
 
-      setLastGameId(gid);
-      setEphemeralStatus(`READY: Game #${gid.toString()} (press PLAY to settle)`, 9000);
-    } catch (e: any) {
-      // If user cancels TX, we must NOT progress to PLAY.
-      setLastGameId(null);
-      setEphemeralStatus(`ERROR: ${e?.shortMessage || e?.message || "TX failed/cancelled"}`, 12000);
-      console.error(e);
-    }
-  }
+      setPendingGameId(gid);
+      setStatus(`GAME #${gid.toString()} — Waiting for settlement...`);
 
-  function startRevealFlicker() {
-    setIsRevealing(true);
+      // Poll for settlement (Chainlink Automation will settle it)
+      const g = await pollForSettlement(gid);
 
-    const duration = 3000 + Math.floor(Math.random() * 2000); // 3–5s
-    const start = Date.now();
-
-    const id = setInterval(() => {
-      setPlayerSeed((s) => (s + 1337) >>> 0);
-      setHouseSeed((s) => (s + 4242) >>> 0);
-
-      // flicker through icons while revealing
-      setPlayerMove(Math.floor(Math.random() * 3) as Move);
-      setHouseMove(Math.floor(Math.random() * 3) as Move);
-
-      if (Date.now() - start >= duration) {
-        clearInterval(id);
-      }
-    }, 120);
-
-    return {
-      stopWithFinal: (finalPlayer: Move, finalHouse: Move) => {
-        const elapsed = Date.now() - start;
-        const remaining = Math.max(0, duration - elapsed);
-
-        setTimeout(() => {
-          clearInterval(id);
-          setIsRevealing(false);
-          setPlayerMove(finalPlayer);
-          setHouseMove(finalHouse);
-          setPlayerSeed((s) => (s + 777) >>> 0);
-          setHouseSeed((s) => (s + 999) >>> 0);
-        }, remaining);
-      },
-      cancel: () => {
-        clearInterval(id);
-        setIsRevealing(false);
-      },
-    };
-  }
-
-  // TX 2/2: settle(gameId)
-  async function settleLastGame() {
-    if (!address || wrongNetwork) return;
-    if (!publicClient) {
-      setEphemeralStatus("ERROR: No public client.");
-      return;
-    }
-    if (!lastGameId) {
-      setEphemeralStatus("ERROR: No pending game. Pick a move first.");
-      return;
-    }
-    // PRE-FLIGHT RESET: if game is already settled or doesn't exist, reset UI
-    try {
-      const g = (await publicClient.readContract({
-        address: addresses.rps,
-        abi: rpsManagerAbi,
-        functionName: "games",
-        args: [lastGameId],
-      })) as any;
-
-      const player = String(g.player ?? g[0]).toLowerCase();
-      const settled = Boolean(g.settled ?? g[8]);
-
-      if (player === "0x0000000000000000000000000000000000000000" || settled) {
-        setLastGameId(null);
-        setEphemeralStatus("No pending game to settle — pick Rock/Paper/Scissors again.", 9000);
-        return;
-      }
-    } catch {
-      setLastGameId(null);
-      setEphemeralStatus("Couldn't load pending game — pick Rock/Paper/Scissors again.", 9000);
-      return;
-    }
-
-
-    const flicker = startRevealFlicker();
-
-    try {
-      setStatus("2/2: SETTLING…");
-
-      const hash = await writeContractAsync({
-        chainId: REQUIRED_CHAIN_ID,
-        abi: rpsManagerAbi,
-        address: addresses.rps,
-        functionName: "settle",
-        args: [lastGameId],
-      });
-
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
-
-          
-      const st = String((receipt as any).status); // "success"/"reverted" or 1/0 or 0x1/0x0
-      const ok = st === "success" || st === "1" || st === "0x1";
-
-      if (!ok) {
-        flicker.cancel();
-        setEphemeralStatus("SETTLE reverted — press PLAY again in a moment (VRF may not be ready).", 9000);
-        return; // IMPORTANT: keep lastGameId so the user can retry
-      }
-
-
-
-
-      // ✅ Authoritative read: force-read at the settle tx block, and retry until settled=true
-      let g: any = null;
-      for (let i = 0; i < 6; i++) {
-        g = (await publicClient.readContract({
-          address: addresses.rps,
-          abi: rpsManagerAbi,
-          functionName: "games",
-          args: [lastGameId],
-        })) as any;
-
-        const settled = Boolean(g.settled ?? g[8]);
-        if (settled) break;
-
-        // small retry delay (no UI changes required)
-        await new Promise((r) => setTimeout(r, 450));
-      }
-
-      // parse using BOTH named + indexed (per your cast order)
+      // Parse game result
       const bet = BigInt(g.bet ?? g[1]);
       const pm = Number(g.move ?? g.playerMove ?? g[2]) as Move;
       const hm = Number(g.houseMove ?? g[3]) as Move;
       const outcome = Number(g.outcome ?? g[5]) as number;
 
-
-      // If your contract stores houseMove at a different index, prefer the named field:
-      if (g.houseMove === undefined && g[3] === undefined && g[4] !== undefined) {
-        // Some ABIs return [player, bet, move, houseMove, requestId, outcome, ...]
-        // If your viem is shifting, adjust here; but first try the fixes above.
-        }
-
-      // economics (keep your existing UI math)
+      // Economics
       const fee = (bet * 100n) / 10_000n; // 1%
       let payout = 0n;
       if (outcome === 3) {
@@ -562,7 +511,7 @@ export default function RpsPage() {
       }
 
       const got: Resolved = {
-        gameId: lastGameId,
+        gameId: gid,
         playerMove: pm,
         houseMove: hm,
         outcome,
@@ -572,20 +521,20 @@ export default function RpsPage() {
         txHash: hash,
       };
 
-
-      flicker.stopWithFinal(got.playerMove, got.houseMove);
+      flicker.stopWithFinal(got.houseMove);
 
       setResolved(got);
-      setLastGameId(null);
+      setPendingGameId(null);
+      setSelectedMove(null);
 
-      setEphemeralStatus(`RESOLVED: Game #${got.gameId.toString()} — ${outcomeToLabel(got.outcome)}`, 9000);
+      setEphemeralStatus(`GAME #${got.gameId.toString()} — ${outcomeToLabel(got.outcome)}`, 9000);
     } catch (e: any) {
       flicker.cancel();
+      setPendingGameId(null);
 
       const msg = (e?.shortMessage || e?.message || "TX failed/cancelled") as string;
-      // Helpful UX: if VRF isn't ready yet, the contract can revert—tell user to retry.
-      if (msg.toLowerCase().includes("random") || msg.toLowerCase().includes("not ready")) {
-        setEphemeralStatus("Randomness not ready yet — press PLAY again in a moment.", 9000);
+      if (msg.toLowerCase().includes("timeout")) {
+        setEphemeralStatus("Settlement taking longer than expected. Check back soon.", 12000);
       } else {
         setEphemeralStatus(`ERROR: ${msg}`, 12000);
       }
@@ -659,13 +608,32 @@ export default function RpsPage() {
           text-transform: uppercase;
           opacity: 0.8;
         }
+
+        .moveBtn {
+          transition: all 0.2s ease;
+        }
+        .moveBtn.selected {
+          box-shadow: 0 0 20px rgba(0, 255, 140, 0.5);
+          transform: scale(1.05);
+        }
       `}</style>
 
       <div className="panel px-5 py-4 text-center marqueePanel">
         <div className="h1">RPS</div>
         <div className="muted tiny mt-2">HOUSE RPS — 1% TO STAKERS</div>
         {status && <div className="muted tiny mt-2">{status}</div>}
-        {wrongNetwork && <div className="danger tiny mt-2">SWITCH TO BASE SEPOLIA</div>}
+        {wrongNetwork && (
+          <div className="mt-2">
+            <div className="danger tiny">SWITCH TO BASE SEPOLIA</div>
+            <button 
+              className="btn btnGold mt-2" 
+              onClick={handleSwitchNetwork}
+              disabled={isSwitchingNetwork}
+            >
+              {isSwitchingNetwork ? "SWITCHING..." : "SWITCH NETWORK"}
+            </button>
+          </div>
+        )}
         <div className="muted tiny mt-1">RPS: {addresses.rps}</div>
       </div>
 
@@ -704,9 +672,9 @@ export default function RpsPage() {
               </div>
               <div className="neonDivider" />
               <div className="hintNeon tiny">
-                {isRevealing ? "DECODING…" : lastGameId ? "PENDING" : "READY"}
+                {isRevealing ? "SETTLING…" : pendingGameId ? "PENDING" : "READY"}
               </div>
-              <div className="muted tiny mt-2">{lastGameId ? `Game #${lastGameId.toString()}` : "—"}</div>
+              <div className="muted tiny mt-2">{pendingGameId ? `Game #${pendingGameId.toString()}` : "—"}</div>
             </div>
 
             <div className="rpsSide" style={{ textAlign: "right" }}>
@@ -731,14 +699,15 @@ export default function RpsPage() {
       <div className="panel potCard cabinetPot" style={{ maxWidth: 620, margin: "18px auto 0" }}>
         <div className="h2">PLAY</div>
 
+        {/* Step 1: Bet Amount */}
         <div className="mt-3 inset statBox">
-          <div className="muted tiny">BET AMOUNT (BRRR)</div>
+          <div className="muted tiny">STEP 1: BET AMOUNT (BRRR)</div>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <input
               className="input"
               value={betInput}
               onChange={(e) => setBetInput(e.target.value)}
-              disabled={disableAll || !!lastGameId || isRevealing}
+              disabled={disableAll || !!pendingGameId}
               inputMode="decimal"
               placeholder="10"
               style={{ flex: 1 }}
@@ -750,72 +719,73 @@ export default function RpsPage() {
           {betWei > 0n && <div className="muted tiny mt-2">Parsed: {betPretty} BRRR</div>}
         </div>
 
-        {/* ROW 1: Approve */}
-        <div className="mt-4">
-          <div className="rowTitle tiny">Row 1 — Approve</div>
-          <button
-            className="btn btnMint w-full"
-            onClick={approve}
-            disabled={!approveEnabled}
-            title={
-              !needsApproval
-                ? "Already approved for this bet"
-                : lastGameId
-                ? "Finish current game first"
-                : ""
-            }
-          >
-            APPROVE BRRR
-          </button>
-          <div className="muted tiny mt-2" style={{ textAlign: "center" }}>
-            Allowance: {formatUnits(allowance, BRRR_DECIMALS)} / Bet: {betPretty}
+        {/* Step 2: Approve (if needed) */}
+        {needsApproval && (
+          <div className="mt-4">
+            <div className="rowTitle tiny">STEP 2: Approve BRRR</div>
+            <button
+              className="btn btnMint w-full"
+              onClick={approve}
+              disabled={!approveEnabled}
+            >
+              APPROVE BRRR
+            </button>
+            <div className="muted tiny mt-2" style={{ textAlign: "center" }}>
+              Allowance: {formatUnits(allowance, BRRR_DECIMALS)} / Bet: {betPretty}
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* ROW 2: Choose */}
+        {/* Step 3: Choose Move */}
         <div className="mt-4">
-          <div className="rowTitle tiny">Row 2 — Choose (TX 1/2)</div>
+          <div className="rowTitle tiny">{needsApproval ? "STEP 3" : "STEP 2"}: Choose Your Move</div>
           <div className="flex gap-2">
-            <button className="btn btnGold flex-1" onClick={() => chooseMove(0)} disabled={!chooseEnabled}>
-              ROCK
+            <button 
+              className={`btn btnGold flex-1 moveBtn ${selectedMove === 0 ? 'selected' : ''}`} 
+              onClick={() => selectMove(0)} 
+              disabled={!moveSelectionEnabled}
+            >
+              🪨 ROCK
             </button>
-            <button className="btn btnGold flex-1" onClick={() => chooseMove(1)} disabled={!chooseEnabled}>
-              PAPER
+            <button 
+              className={`btn btnGold flex-1 moveBtn ${selectedMove === 1 ? 'selected' : ''}`} 
+              onClick={() => selectMove(1)} 
+              disabled={!moveSelectionEnabled}
+            >
+              📄 PAPER
             </button>
-            <button className="btn btnGold flex-1" onClick={() => chooseMove(2)} disabled={!chooseEnabled}>
-              SCISSORS
+            <button 
+              className={`btn btnGold flex-1 moveBtn ${selectedMove === 2 ? 'selected' : ''}`} 
+              onClick={() => selectMove(2)} 
+              disabled={!moveSelectionEnabled}
+            >
+              ✂️ SCISSORS
             </button>
           </div>
-          {needsApproval && (
-            <div className="tiny mt-2 mutedNeon" style={{ textAlign: "center" }}>
-              Disabled until approval is sufficient for the bet.
+          {selectedMove !== null && (
+            <div className="muted tiny mt-2" style={{ textAlign: "center" }}>
+              Selected: {moveToLabel(selectedMove)}
             </div>
           )}
         </div>
 
-        {/* ROW 3: Play */}
+        {/* Step 4: Play */}
         <div className="mt-4">
-          <div className="rowTitle tiny">Row 3 — Play (TX 2/2)</div>
+          <div className="rowTitle tiny">{needsApproval ? "STEP 4" : "STEP 3"}: Play!</div>
           <button
             className="btn btnBlue w-full"
-            onClick={settleLastGame}
+            onClick={play}
             disabled={!playEnabled}
-            title={!lastGameId ? "Pick a move first" : ""}
           >
-            PLAY (TX 2/2)
+            {isRevealing ? "SETTLING..." : "🎮 PLAY"}
           </button>
-
           <div className="muted tiny mt-2" style={{ textAlign: "center" }}>
-            {!lastGameId
-              ? "Disabled until TX 1/2 is confirmed and a gameId exists."
-              : "If it reverts, press PLAY again in a moment (VRF may not be ready yet)."}
+            {selectedMove === null 
+              ? "Select a move above to enable play."
+              : needsApproval
+              ? "Approve BRRR first."
+              : "Click to play! Settlement is automatic via Chainlink."}
           </div>
-
-          {isRevealing && (
-            <div className="tiny mt-2 mutedNeon" style={{ textAlign: "center" }}>
-              Decoding… final icons will lock in.
-            </div>
-          )}
         </div>
 
         {/* Outcome panel */}
@@ -827,7 +797,12 @@ export default function RpsPage() {
               Player: {moveToLabel(resolved.playerMove)} vs House: {moveToLabel(resolved.houseMove)}
             </div>
 
-            <div className="tiny mt-1">{outcomeToLabel(resolved.outcome)}</div>
+            <div className="tiny mt-1" style={{ 
+              color: resolved.outcome === 1 ? '#00ff8c' : resolved.outcome === 2 ? '#ff6b6b' : '#ffd700',
+              fontWeight: 'bold'
+            }}>
+              {outcomeToLabel(resolved.outcome)}
+            </div>
 
             <div className="muted tiny mt-3">ECONOMICS</div>
             <div className="tiny mt-1">Bet: {formatUnits(resolved.bet, BRRR_DECIMALS)} BRRR</div>

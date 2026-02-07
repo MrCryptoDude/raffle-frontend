@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useAccount, useConnect, useDisconnect, useChainId } from "wagmi";
+import { useAccount, useConnect, useDisconnect, useChainId, useSwitchChain } from "wagmi";
 import { injected } from "wagmi/connectors";
 import { REQUIRED_CHAIN_ID } from "../lib/addresses";
 
@@ -16,12 +16,35 @@ export function ConnectWallet() {
 
   const { connectAsync, isPending } = useConnect();
   const { disconnect } = useDisconnect();
+  const { switchChainAsync, isPending: isSwitching } = useSwitchChain();
 
   const wrongNetwork = isConnected && chainId !== REQUIRED_CHAIN_ID;
 
   async function onConnect() {
-    // Generic injected connector (MetaMask, Coinbase Wallet extension, Rabby, Brave, etc.)
-    await connectAsync({ connector: injected() });
+    try {
+      // Connect with injected connector
+      await connectAsync({ connector: injected() });
+      
+      // After connecting, check if we need to switch networks
+      // Small delay to let wagmi update chainId
+      setTimeout(async () => {
+        try {
+          await switchChainAsync({ chainId: REQUIRED_CHAIN_ID });
+        } catch (e) {
+          console.log("Network switch prompt dismissed or failed:", e);
+        }
+      }, 100);
+    } catch (e) {
+      console.error("Connect failed:", e);
+    }
+  }
+
+  async function onSwitchNetwork() {
+    try {
+      await switchChainAsync({ chainId: REQUIRED_CHAIN_ID });
+    } catch (e) {
+      console.error("Switch network failed:", e);
+    }
   }
 
   if (!isConnected) {
@@ -37,9 +60,14 @@ export function ConnectWallet() {
       <span className="badge">{shortAddr(address)}</span>
 
       {wrongNetwork && (
-        <span className="badge" style={{ marginLeft: 8 }}>
-          WRONG CHAIN
-        </span>
+        <button 
+          className="btn btnGold" 
+          style={{ marginLeft: 8 }}
+          onClick={onSwitchNetwork}
+          disabled={isSwitching}
+        >
+          {isSwitching ? "SWITCHING..." : "SWITCH TO BASE SEPOLIA"}
+        </button>
       )}
 
       <button className="btn btnBlue" onClick={() => disconnect()}>
