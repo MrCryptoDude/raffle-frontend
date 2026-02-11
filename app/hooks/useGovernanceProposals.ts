@@ -132,23 +132,24 @@ export function useGovernanceProposals(opts?: { fromBlock?: bigint; limit?: numb
         // newest first
         logs.sort((a: any, b: any) => Number((b.blockNumber ?? 0n) - (a.blockNumber ?? 0n)));
 
-        const proposals: GovernanceProposal[] = logs
-          .map((log: any) => {
-            const a = log.args;
-            if (!a || !a.proposalId) return null; // Skip invalid logs
-            
-            const description: string = a.description ?? "";
+        const mappedProposals = logs.map((log: any) => {
+          const a = log.args;
+          if (!a || !a.proposalId) return null; // Skip invalid logs
+          
+          const description: string = a.description ?? "";
 
-            return {
-              proposalId: a.proposalId as bigint,
-              proposer: a.proposer as `0x${string}`,
-              targets: a.targets as string[] | undefined,
-              description,
-              title: titleFromDescription(description),
-              voteStart: a.voteStart as bigint,
-              voteEnd: a.voteEnd as bigint,
-            };
-          })
+          return {
+            proposalId: a.proposalId as bigint,
+            proposer: a.proposer as `0x${string}`,
+            targets: a.targets as string[] | undefined,
+            description,
+            title: titleFromDescription(description),
+            voteStart: a.voteStart as bigint,
+            voteEnd: a.voteEnd as bigint,
+          };
+        });
+
+        const proposals = mappedProposals
           .filter((p): p is GovernanceProposal => p !== null)
           .slice(0, limit);
 
