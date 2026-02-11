@@ -12,13 +12,56 @@ import {
 } from "../../lib/addresses";
 import { erc20Abi, stakingAbi } from "../../lib/abis";
 
-function fmt(v: bigint | undefined, decimals: number) {
+function formatNumber(v: bigint | undefined, decimals: number, maxDecimals = 2) {
+  if (v === undefined) return "—";
+  const num = Number(formatUnits(v, decimals));
+  if (num === 0) return "0";
+  if (num < 0.01) return "<0.01";
+  return num.toLocaleString(undefined, { maximumFractionDigits: maxDecimals });
+}
+
+function formatFull(v: bigint | undefined, decimals: number) {
   if (v === undefined) return "—";
   return formatUnits(v, decimals);
 }
 
 function isAddress(x: unknown): x is `0x${string}` {
   return typeof x === "string" && /^0x[a-fA-F0-9]{40}$/.test(x);
+}
+
+// Countdown timer component
+function EpochCountdown({ endsAt }: { endsAt: bigint | undefined }) {
+  const [timeLeft, setTimeLeft] = React.useState("");
+
+  React.useEffect(() => {
+    if (!endsAt || endsAt === 0n) {
+      setTimeLeft("—");
+      return;
+    }
+
+    const update = () => {
+      const now = Math.floor(Date.now() / 1000);
+      const end = Number(endsAt);
+      const diff = end - now;
+
+      if (diff <= 0) {
+        setTimeLeft("Rolling over...");
+        return;
+      }
+
+      const hours = Math.floor(diff / 3600);
+      const mins = Math.floor((diff % 3600) / 60);
+      const secs = diff % 60;
+
+      setTimeLeft(`${hours}h ${mins}m ${secs}s`);
+    };
+
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [endsAt]);
+
+  return <span>{timeLeft}</span>;
 }
 
 export default function StakePage() {
@@ -29,18 +72,15 @@ export default function StakePage() {
 
   const { writeContractAsync } = useWriteContract();
 
-  const [amount, setAmount] = React.useState("0");
+  const [amount, setAmount] = React.useState("");
   const [status, setStatus] = React.useState("");
-
-  // Optional: manual BRRR price input (USDC per 1 BRRR) for APR calculation
-  const [brrrPriceUsdc, setBrrrPriceUsdc] = React.useState("");
+  const [activeTab, setActiveTab] = React.useState<"stake" | "withdraw">("stake");
 
   const hasAddresses = isAddress(addresses.raffle) && isAddress(addresses.staking);
 
   const addr0 = "0x0000000000000000000000000000000000000000" as const;
   const user = (address ?? addr0) as `0x${string}`;
 
-  // Helper to ensure correct network before any action
   async function ensureCorrectNetwork(): Promise<boolean> {
     if (!isConnected) return false;
     if (!wrongNetwork) return true;
@@ -50,7 +90,7 @@ export default function StakePage() {
       return true;
     } catch (e) {
       console.error("Failed to switch network:", e);
-      setStatus("Please switch to Base Sepolia to continue.");
+      setStatus("Please switch to Base to continue.");
       return false;
     }
   }
@@ -74,7 +114,6 @@ export default function StakePage() {
     query: { enabled: !!address && hasAddresses, refetchInterval: 2500 },
   });
 
-  // ✅ Fix: split earned by token (matches stakingAbi typings)
   const earnedUsdcQ = useReadContract({
     chainId: REQUIRED_CHAIN_ID,
     abi: stakingAbi,
@@ -91,39 +130,6 @@ export default function StakePage() {
     functionName: "earnedBRRR",
     args: [user],
     query: { enabled: !!address && hasAddresses, refetchInterval: 2500 },
-  });
-
-  // ✅ Fix: suffix reads with USDC/BRRR (matches stakingAbi typings)
-  const queuedUsdcQ = useReadContract({
-    chainId: REQUIRED_CHAIN_ID,
-    abi: stakingAbi,
-    address: addresses.staking,
-    functionName: "queuedRewardsUSDC",
-    query: { enabled: hasAddresses, refetchInterval: 2500 },
-  });
-
-  const queuedBrrrQ = useReadContract({
-    chainId: REQUIRED_CHAIN_ID,
-    abi: stakingAbi,
-    address: addresses.staking,
-    functionName: "queuedRewardsBRRR",
-    query: { enabled: hasAddresses, refetchInterval: 2500 },
-  });
-
-  const pendingNextUsdcQ = useReadContract({
-    chainId: REQUIRED_CHAIN_ID,
-    abi: stakingAbi,
-    address: addresses.staking,
-    functionName: "pendingNextEpochRewardsUSDC",
-    query: { enabled: hasAddresses, refetchInterval: 2500 },
-  });
-
-  const pendingNextBrrrQ = useReadContract({
-    chainId: REQUIRED_CHAIN_ID,
-    abi: stakingAbi,
-    address: addresses.staking,
-    functionName: "pendingNextEpochRewardsBRRR",
-    query: { enabled: hasAddresses, refetchInterval: 2500 },
   });
 
   const epochRewardUsdcQ = useReadContract({
@@ -150,14 +156,6 @@ export default function StakePage() {
     query: { enabled: hasAddresses, refetchInterval: 2500 },
   });
 
-  const epochEndsBrrrQ = useReadContract({
-    chainId: REQUIRED_CHAIN_ID,
-    abi: stakingAbi,
-    address: addresses.staking,
-    functionName: "epochEndsAtBRRR",
-    query: { enabled: hasAddresses, refetchInterval: 2500 },
-  });
-
   const totalStakedQ = useReadContract({
     chainId: REQUIRED_CHAIN_ID,
     abi: erc20Abi,
@@ -178,6 +176,8 @@ export default function StakePage() {
 
   // ---------- Derived ----------
   const stakedBal = stakedBalQ.data ?? 0n;
+  const walletBal = raffleBalQ.data ?? 0n;
+  const totalStaked = totalStakedQ.data ?? 0n;
 
   const amountWei = React.useMemo(() => {
     try {
@@ -188,83 +188,39 @@ export default function StakePage() {
   }, [amount]);
 
   const allowance = allowanceQ.data ?? 0n;
-
   const needsApprove = !!address && amountWei > 0n && allowance < amountWei;
-  const withdrawInvalid = !address || amountWei === 0n || amountWei > stakedBal;
 
-  const totalStaked = totalStakedQ.data ?? 0n; // BRRR (18d)
-  const epochRewardUsdc = epochRewardUsdcQ.data ?? 0n; // USDC (6d)
-  const epochRewardBrrr = epochRewardBrrrQ.data ?? 0n; // BRRR (18d)
+  // Calculate user's share of pool
+  const userShare = totalStaked > 0n && stakedBal > 0n
+    ? Number((stakedBal * 10000n) / totalStaked) / 100
+    : 0;
 
-  // Metrics (BigInt-safe)
-  const SCALE = 10n ** 18n;
-  const usdcFactor = 10n ** BigInt(USDC_DECIMALS);
-  const raffleFactor = 10n ** BigInt(RAFFLE_DECIMALS);
-
-  // USDC per BRRR per 24h
-  const usdcPerBrrrPerDayScaled =
-    totalStaked > 0n
-      ? (epochRewardUsdc * raffleFactor * SCALE) / (totalStaked * usdcFactor)
-      : 0n;
-  const usdcPerBrrrPerDay = Number(usdcPerBrrrPerDayScaled) / Number(SCALE);
-
-  // BRRR per BRRR per 24h (dimensionless, but useful)
-  const brrrPerBrrrPerDayScaled =
-    totalStaked > 0n ? (epochRewardBrrr * SCALE) / totalStaked : 0n;
-  const brrrPerBrrrPerDay = Number(brrrPerBrrrPerDayScaled) / Number(SCALE);
-
-  let apr24hUsd: number | null = null;
-  let apr365Usd: number | null = null;
-
-  let priceScaled: bigint | null = null;
-  if (brrrPriceUsdc.trim() !== "") {
-    try {
-      priceScaled = parseUnits(brrrPriceUsdc, 18);
-      if (priceScaled <= 0n) priceScaled = null;
-    } catch {
-      priceScaled = null;
-    }
-  }
-
-  if (priceScaled && totalStaked > 0n) {
-    const stakedValueUsdcScaled = (totalStaked * priceScaled) / raffleFactor; // 1e18
-    if (stakedValueUsdcScaled > 0n) {
-      const epochRewardScaledTo1e18 = (epochRewardUsdc * SCALE) / usdcFactor; // 1e18
-      const dailyRateScaled = (epochRewardScaledTo1e18 * SCALE) / stakedValueUsdcScaled; // 1e18
-      const dailyRate = Number(dailyRateScaled) / Number(SCALE);
-
-      if (Number.isFinite(dailyRate)) {
-        apr24hUsd = dailyRate * 100;
-        apr365Usd = dailyRate * 365 * 100;
-      }
-    }
-  }
-
-  const epochEndsUsdc =
-    epochEndsUsdcQ.data && epochEndsUsdcQ.data > 0n
-      ? new Date(Number(epochEndsUsdcQ.data) * 1000).toLocaleString()
-      : "—";
-
-  const epochEndsBrrr =
-    epochEndsBrrrQ.data && epochEndsBrrrQ.data > 0n
-      ? new Date(Number(epochEndsBrrrQ.data) * 1000).toLocaleString()
-      : "—";
+  // Estimated daily earnings
+  const epochRewardUsdc = epochRewardUsdcQ.data ?? 0n;
+  const epochRewardBrrr = epochRewardBrrrQ.data ?? 0n;
+  
+  const estimatedDailyUsdc = totalStaked > 0n && stakedBal > 0n
+    ? (epochRewardUsdc * stakedBal) / totalStaked
+    : 0n;
+  
+  const estimatedDailyBrrr = totalStaked > 0n && stakedBal > 0n
+    ? (epochRewardBrrr * stakedBal) / totalStaked
+    : 0n;
 
   async function tx(label: string, fn: () => Promise<unknown>) {
-    // Ensure correct network before any transaction
     const networkOk = await ensureCorrectNetwork();
     if (!networkOk) return;
 
     try {
       setStatus(label);
-      const res: any = await fn();
-      if (typeof res === "string") setStatus(`${label} (tx: ${res.slice(0, 10)}...)`);
-      else setStatus(`${label} SENT`);
+      await fn();
+      setStatus(`${label} ✓`);
+      setAmount("");
     } catch (e: any) {
       setStatus(`ERROR: ${e?.shortMessage || e?.message || "TX failed"}`);
       console.error(e);
     } finally {
-      setTimeout(() => setStatus(""), 6500);
+      setTimeout(() => setStatus(""), 4000);
     }
   }
 
@@ -272,7 +228,7 @@ export default function StakePage() {
 
   async function approve() {
     if (!writesEnabled || amountWei === 0n) return;
-    await tx("APPROVING", async () =>
+    await tx("Approving...", async () =>
       writeContractAsync({
         chainId: REQUIRED_CHAIN_ID,
         abi: erc20Abi,
@@ -285,7 +241,7 @@ export default function StakePage() {
 
   async function stake() {
     if (!writesEnabled || amountWei === 0n || needsApprove) return;
-    await tx("STAKING", async () =>
+    await tx("Staking...", async () =>
       writeContractAsync({
         chainId: REQUIRED_CHAIN_ID,
         abi: stakingAbi,
@@ -297,8 +253,8 @@ export default function StakePage() {
   }
 
   async function withdraw() {
-    if (!writesEnabled || withdrawInvalid) return;
-    await tx("WITHDRAWING", async () =>
+    if (!writesEnabled || amountWei === 0n || amountWei > stakedBal) return;
+    await tx("Withdrawing...", async () =>
       writeContractAsync({
         chainId: REQUIRED_CHAIN_ID,
         abi: stakingAbi,
@@ -311,7 +267,7 @@ export default function StakePage() {
 
   async function claim() {
     if (!writesEnabled) return;
-    await tx("CLAIMING", async () =>
+    await tx("Claiming...", async () =>
       writeContractAsync({
         chainId: REQUIRED_CHAIN_ID,
         abi: stakingAbi,
@@ -322,14 +278,12 @@ export default function StakePage() {
     );
   }
 
-  function setMaxWallet() {
-    if (!raffleBalQ.data) return;
-    setAmount(formatUnits(raffleBalQ.data, RAFFLE_DECIMALS));
-  }
-
-  function setMaxStaked() {
-    if (!stakedBalQ.data) return;
-    setAmount(formatUnits(stakedBalQ.data, RAFFLE_DECIMALS));
+  function setMax() {
+    if (activeTab === "stake") {
+      setAmount(formatUnits(walletBal, RAFFLE_DECIMALS));
+    } else {
+      setAmount(formatUnits(stakedBal, RAFFLE_DECIMALS));
+    }
   }
 
   async function handleSwitchNetwork() {
@@ -340,187 +294,497 @@ export default function StakePage() {
     }
   }
 
+  const earnedUsdc = earnedUsdcQ.data ?? 0n;
+  const earnedBrrr = earnedBrrrQ.data ?? 0n;
+  const hasEarnings = earnedUsdc > 0n || earnedBrrr > 0n;
+
   return (
-    <main className="screen">
-      <div className="panel px-5 py-4 text-center marqueePanel">
-        <div className="h1">STAKE</div>
-        <div className="muted tiny mt-2">STAKE BRRR • REWARDS STREAM OVER 24H</div>
-        {status && <div className="muted tiny mt-2">{status}</div>}
-      </div>
-
-      {!hasAddresses && (
-        <div className="panel px-5 py-3 text-center mt-4">
-          <div className="danger tiny">CONFIG ERROR</div>
-          <div className="muted tiny mt-1">
-            Missing NEXT_PUBLIC_RAFFLE / NEXT_PUBLIC_STAKING (or invalid addresses).
-          </div>
-        </div>
-      )}
-
-      {wrongNetwork && (
-        <div className="panel px-5 py-3 text-center mt-4">
-          <div className="danger tiny">WRONG NETWORK</div>
-          <div className="muted tiny mt-1">
-            Switch to Base Sepolia (Chain ID {REQUIRED_CHAIN_ID}) to use staking.
-          </div>
-          <button 
-            className="btn btnGold mt-3" 
-            onClick={handleSwitchNetwork}
-            disabled={isSwitchingNetwork}
-          >
-            {isSwitchingNetwork ? "SWITCHING..." : "SWITCH TO BASE SEPOLIA"}
-          </button>
-        </div>
-      )}
-
-      <div className="mt-5 potRow">
-        <div className="panel potCard cabinetPot">
-          <div className="h2">YOUR STAKE</div>
-
-          <div className="mt-3 inset statBox">
-            <div className="muted tiny">BRRR BALANCE</div>
-            <div className="h2">{fmt(raffleBalQ.data, RAFFLE_DECIMALS)}</div>
-          </div>
-
-          <div className="mt-3 inset statBox">
-            <div className="muted tiny">STAKED</div>
-            <div className="h2">{fmt(stakedBalQ.data, RAFFLE_DECIMALS)}</div>
-          </div>
-
-          <div className="mt-3 inset statBox">
-            <div className="muted tiny">EARNED (USDC)</div>
-            <div className="h2">{fmt(earnedUsdcQ.data, USDC_DECIMALS)}</div>
-          </div>
-
-          <div className="mt-3 inset statBox">
-            <div className="muted tiny">EARNED (BRRR)</div>
-            <div className="h2">{fmt(earnedBrrrQ.data, RAFFLE_DECIMALS)}</div>
-          </div>
-
-          <div className="mt-3">
-            <div className="muted tiny">AMOUNT</div>
-            <input className="input mt-1" value={amount} onChange={(e) => setAmount(e.target.value)} />
-            <div className="mt-2 flex gap-2">
-              <button className="btn btnBlue flex-1" onClick={setMaxWallet} disabled={!address}>
-                MAX WALLET
-              </button>
-              <button className="btn btnBlue flex-1" onClick={setMaxStaked} disabled={!address}>
-                MAX STAKED
-              </button>
+    <main style={{ 
+      minHeight: "100vh", 
+      padding: "24px 16px",
+      background: "linear-gradient(180deg, #0a0a0a 0%, #0d1a0f 50%, #0a0a0a 100%)",
+    }}>
+      {/* Header */}
+      <div style={{ maxWidth: 1000, margin: "0 auto" }}>
+        <div style={{ textAlign: "center", marginBottom: 32 }}>
+          <h1 style={{
+            fontSize: 36,
+            fontWeight: 900,
+            background: "linear-gradient(135deg, #00ff8c 0%, #00cc70 100%)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+            marginBottom: 8,
+          }}>
+            STAKING
+          </h1>
+          <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 13 }}>
+            Stake BRRR to earn protocol revenue • Rewards stream over 24h epochs
+          </p>
+          {status && (
+            <div style={{
+              marginTop: 12,
+              padding: "8px 16px",
+              borderRadius: 8,
+              background: status.includes("ERROR") ? "rgba(255,100,100,0.15)" : "rgba(0,255,140,0.15)",
+              border: `1px solid ${status.includes("ERROR") ? "rgba(255,100,100,0.3)" : "rgba(0,255,140,0.3)"}`,
+              display: "inline-block",
+              fontSize: 12,
+              color: status.includes("ERROR") ? "rgba(255,100,100,0.9)" : "rgba(0,255,140,0.9)",
+            }}>
+              {status}
             </div>
-          </div>
+          )}
+        </div>
 
-          <div className="mt-3 flex gap-2">
-            <button className="btn btnMint flex-1" onClick={approve} disabled={!writesEnabled || amountWei === 0n}>
-              APPROVE
-            </button>
-            <button
-              className="btn btnGold flex-1"
-              onClick={stake}
-              disabled={!writesEnabled || needsApprove || amountWei === 0n}
+        {wrongNetwork && (
+          <div style={{
+            background: "rgba(255,100,100,0.1)",
+            border: "1px solid rgba(255,100,100,0.3)",
+            borderRadius: 12,
+            padding: 20,
+            textAlign: "center",
+            marginBottom: 24,
+          }}>
+            <div style={{ color: "rgba(255,100,100,0.9)", fontWeight: 700, marginBottom: 8 }}>
+              Wrong Network
+            </div>
+            <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 13, marginBottom: 16 }}>
+              Please switch to Base to use staking.
+            </div>
+            <button 
+              onClick={handleSwitchNetwork}
+              disabled={isSwitchingNetwork}
+              style={{
+                padding: "10px 24px",
+                borderRadius: 8,
+                background: "rgba(255,100,100,0.2)",
+                border: "1px solid rgba(255,100,100,0.4)",
+                color: "rgba(255,255,255,0.9)",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
             >
-              STAKE
+              {isSwitchingNetwork ? "Switching..." : "Switch Network"}
             </button>
           </div>
+        )}
 
-          <div className="mt-3 flex gap-2">
-            <button className="btn btnGold flex-1" onClick={withdraw} disabled={!writesEnabled || withdrawInvalid}>
-              WITHDRAW
-            </button>
-            <button className="btn btnMint flex-1" onClick={claim} disabled={!writesEnabled}>
-              CLAIM
-            </button>
-          </div>
-
-          {address && amountWei > stakedBal && <div className="danger tiny mt-2">WITHDRAW AMOUNT {" > "} STAKED</div>}
-        </div>
-
-        <div className="panel potCard cabinetPot">
-          <div className="h2">REWARDS</div>
-
-          <div className="mt-3 inset statBox">
-            <div className="muted tiny">CURRENT 24H STREAM (USDC)</div>
-            <div className="h2">{fmt(epochRewardUsdcQ.data, USDC_DECIMALS)} USDC</div>
-          </div>
-
-          <div className="mt-3 inset statBox">
-            <div className="muted tiny">EPOCH ENDS (USDC)</div>
-            <div className="muted tiny">{epochEndsUsdc}</div>
-          </div>
-
-          <div className="mt-3 inset statBox">
-            <div className="muted tiny">PENDING NEXT EPOCH (USDC)</div>
-            <div className="h2">{fmt(pendingNextUsdcQ.data, USDC_DECIMALS)} USDC</div>
-          </div>
-
-          <div className="mt-3 inset statBox">
-            <div className="muted tiny">QUEUED (NO STAKERS) (USDC)</div>
-            <div className="h2">{fmt(queuedUsdcQ.data, USDC_DECIMALS)} USDC</div>
-          </div>
-
-          <div className="mt-5 inset statBox">
-            <div className="muted tiny">CURRENT 24H STREAM (BRRR)</div>
-            <div className="h2">{fmt(epochRewardBrrrQ.data, RAFFLE_DECIMALS)} BRRR</div>
-          </div>
-
-          <div className="mt-3 inset statBox">
-            <div className="muted tiny">EPOCH ENDS (BRRR)</div>
-            <div className="muted tiny">{epochEndsBrrr}</div>
-          </div>
-
-          <div className="mt-3 inset statBox">
-            <div className="muted tiny">PENDING NEXT EPOCH (BRRR)</div>
-            <div className="h2">{fmt(pendingNextBrrrQ.data, RAFFLE_DECIMALS)} BRRR</div>
-          </div>
-
-          <div className="mt-3 inset statBox">
-            <div className="muted tiny">QUEUED (NO STAKERS) (BRRR)</div>
-            <div className="h2">{fmt(queuedBrrrQ.data, RAFFLE_DECIMALS)} BRRR</div>
-          </div>
-
-        </div>
-
-        <div className="panel potCard cabinetPot">
-          <div className="h2">APR</div>
-
-          <div className="mt-3 inset statBox">
-            <div className="muted tiny">TOTAL STAKED (BRRR)</div>
-            <div className="h2">{fmt(totalStakedQ.data, RAFFLE_DECIMALS)}</div>
-          </div>
-
-          <div className="mt-3 inset statBox">
-            <div className="muted tiny">YIELD (USDC / BRRR / DAY)</div>
-            <div className="h2">
-              {Number.isFinite(usdcPerBrrrPerDay) ? usdcPerBrrrPerDay.toFixed(8) : "0.00000000"}
+        {/* Main Grid */}
+        <div style={{ 
+          display: "grid", 
+          gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+          gap: 20,
+        }}>
+          {/* Your Position Card */}
+          <div style={{
+            background: "rgba(0,0,0,0.4)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: 16,
+            padding: 24,
+          }}>
+            <div style={{ 
+              fontSize: 11, 
+              fontWeight: 600, 
+              color: "rgba(255,255,255,0.4)", 
+              letterSpacing: 1.5,
+              marginBottom: 20,
+            }}>
+              YOUR POSITION
             </div>
-          </div>
 
-          <div className="mt-3 inset statBox">
-            <div className="muted tiny">YIELD (BRRR / BRRR / DAY)</div>
-            <div className="h2">
-              {Number.isFinite(brrrPerBrrrPerDay) ? brrrPerBrrrPerDay.toFixed(8) : "0.00000000"}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 24 }}>
+              <div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 4 }}>Wallet</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: "rgba(255,255,255,0.9)" }}>
+                  {formatNumber(walletBal, RAFFLE_DECIMALS)}
+                </div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>BRRR</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 4 }}>Staked</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: "rgba(0,255,140,0.9)" }}>
+                  {formatNumber(stakedBal, RAFFLE_DECIMALS)}
+                </div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>BRRR</div>
+              </div>
             </div>
+
+            {stakedBal > 0n && (
+              <div style={{
+                background: "rgba(0,255,140,0.05)",
+                border: "1px solid rgba(0,255,140,0.15)",
+                borderRadius: 10,
+                padding: 12,
+                marginBottom: 20,
+              }}>
+                <div style={{ fontSize: 11, color: "rgba(0,255,140,0.7)", marginBottom: 4 }}>Pool Share</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: "rgba(0,255,140,0.9)" }}>
+                  {userShare.toFixed(2)}%
+                </div>
+              </div>
+            )}
+
+            {/* Tabs */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              <button
+                onClick={() => setActiveTab("stake")}
+                style={{
+                  flex: 1,
+                  padding: "10px 16px",
+                  borderRadius: 8,
+                  border: "none",
+                  background: activeTab === "stake" ? "rgba(0,255,140,0.2)" : "rgba(255,255,255,0.05)",
+                  color: activeTab === "stake" ? "rgba(0,255,140,0.9)" : "rgba(255,255,255,0.5)",
+                  fontWeight: 600,
+                  fontSize: 13,
+                  cursor: "pointer",
+                }}
+              >
+                Stake
+              </button>
+              <button
+                onClick={() => setActiveTab("withdraw")}
+                style={{
+                  flex: 1,
+                  padding: "10px 16px",
+                  borderRadius: 8,
+                  border: "none",
+                  background: activeTab === "withdraw" ? "rgba(255,200,100,0.2)" : "rgba(255,255,255,0.05)",
+                  color: activeTab === "withdraw" ? "rgba(255,200,100,0.9)" : "rgba(255,255,255,0.5)",
+                  fontWeight: 600,
+                  fontSize: 13,
+                  cursor: "pointer",
+                }}
+              >
+                Withdraw
+              </button>
+            </div>
+
+            {/* Amount Input */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ 
+                display: "flex", 
+                justifyContent: "space-between", 
+                alignItems: "center",
+                marginBottom: 8,
+              }}>
+                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>Amount</span>
+                <button
+                  onClick={setMax}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "rgba(0,255,140,0.7)",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  MAX
+                </button>
+              </div>
+              <input
+                type="text"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0.00"
+                style={{
+                  width: "100%",
+                  padding: "14px 16px",
+                  borderRadius: 10,
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  background: "rgba(0,0,0,0.3)",
+                  color: "rgba(255,255,255,0.9)",
+                  fontSize: 18,
+                  fontWeight: 600,
+                  outline: "none",
+                }}
+              />
+            </div>
+
+            {/* Action Buttons */}
+            {activeTab === "stake" ? (
+              <div style={{ display: "flex", gap: 10 }}>
+                <button
+                  onClick={approve}
+                  disabled={!writesEnabled || amountWei === 0n || !needsApprove}
+                  style={{
+                    flex: 1,
+                    padding: "14px",
+                    borderRadius: 10,
+                    border: "1px solid rgba(255,255,255,0.2)",
+                    background: "rgba(255,255,255,0.05)",
+                    color: !needsApprove ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.8)",
+                    fontWeight: 600,
+                    fontSize: 14,
+                    cursor: needsApprove ? "pointer" : "not-allowed",
+                  }}
+                >
+                  {!needsApprove ? "✓ Approved" : "Approve"}
+                </button>
+                <button
+                  onClick={stake}
+                  disabled={!writesEnabled || amountWei === 0n || needsApprove}
+                  style={{
+                    flex: 1,
+                    padding: "14px",
+                    borderRadius: 10,
+                    border: "none",
+                    background: needsApprove || amountWei === 0n 
+                      ? "rgba(0,255,140,0.2)" 
+                      : "linear-gradient(135deg, rgba(0,255,140,0.4) 0%, rgba(0,200,100,0.3) 100%)",
+                    color: needsApprove || amountWei === 0n ? "rgba(0,255,140,0.4)" : "rgba(255,255,255,0.95)",
+                    fontWeight: 700,
+                    fontSize: 14,
+                    cursor: needsApprove || amountWei === 0n ? "not-allowed" : "pointer",
+                    boxShadow: needsApprove || amountWei === 0n ? "none" : "0 0 20px rgba(0,255,140,0.2)",
+                  }}
+                >
+                  Stake
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={withdraw}
+                disabled={!writesEnabled || amountWei === 0n || amountWei > stakedBal}
+                style={{
+                  width: "100%",
+                  padding: "14px",
+                  borderRadius: 10,
+                  border: "none",
+                  background: amountWei === 0n || amountWei > stakedBal
+                    ? "rgba(255,200,100,0.2)"
+                    : "linear-gradient(135deg, rgba(255,200,100,0.4) 0%, rgba(200,150,50,0.3) 100%)",
+                  color: amountWei === 0n || amountWei > stakedBal ? "rgba(255,200,100,0.4)" : "rgba(255,255,255,0.95)",
+                  fontWeight: 700,
+                  fontSize: 14,
+                  cursor: amountWei === 0n || amountWei > stakedBal ? "not-allowed" : "pointer",
+                }}
+              >
+                Withdraw
+              </button>
+            )}
+
+            {activeTab === "withdraw" && amountWei > stakedBal && (
+              <div style={{ 
+                marginTop: 8, 
+                fontSize: 11, 
+                color: "rgba(255,100,100,0.8)",
+                textAlign: "center",
+              }}>
+                Insufficient staked balance
+              </div>
+            )}
           </div>
 
-          <div className="mt-3 inset statBox">
-            <div className="muted tiny">BRRR PRICE (USDC) FOR APR</div>
-            <input
-              className="input mt-1"
-              placeholder='e.g. "0.0123"'
-              value={brrrPriceUsdc}
-              onChange={(e) => setBrrrPriceUsdc(e.target.value)}
-            />
-            <div className="muted tiny mt-2">If blank/invalid, APR shows —. Replace later with a price feed.</div>
+          {/* Rewards Card */}
+          <div style={{
+            background: "rgba(0,0,0,0.4)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: 16,
+            padding: 24,
+          }}>
+            <div style={{ 
+              fontSize: 11, 
+              fontWeight: 600, 
+              color: "rgba(255,255,255,0.4)", 
+              letterSpacing: 1.5,
+              marginBottom: 20,
+            }}>
+              YOUR REWARDS
+            </div>
+
+            <div style={{ 
+              display: "grid", 
+              gridTemplateColumns: "1fr 1fr", 
+              gap: 16, 
+              marginBottom: 20,
+            }}>
+              <div style={{
+                background: "rgba(0,255,140,0.05)",
+                border: "1px solid rgba(0,255,140,0.15)",
+                borderRadius: 12,
+                padding: 16,
+              }}>
+                <div style={{ fontSize: 11, color: "rgba(0,255,140,0.6)", marginBottom: 6 }}>Earned USDC</div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "rgba(0,255,140,0.95)" }}>
+                  {formatNumber(earnedUsdc, USDC_DECIMALS, 4)}
+                </div>
+              </div>
+              <div style={{
+                background: "rgba(255,200,100,0.05)",
+                border: "1px solid rgba(255,200,100,0.15)",
+                borderRadius: 12,
+                padding: 16,
+              }}>
+                <div style={{ fontSize: 11, color: "rgba(255,200,100,0.6)", marginBottom: 6 }}>Earned BRRR</div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "rgba(255,200,100,0.95)" }}>
+                  {formatNumber(earnedBrrr, RAFFLE_DECIMALS, 2)}
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={claim}
+              disabled={!writesEnabled || !hasEarnings}
+              style={{
+                width: "100%",
+                padding: "16px",
+                borderRadius: 12,
+                border: "none",
+                background: hasEarnings 
+                  ? "linear-gradient(135deg, rgba(0,255,140,0.3) 0%, rgba(255,200,100,0.2) 100%)"
+                  : "rgba(255,255,255,0.05)",
+                color: hasEarnings ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.3)",
+                fontWeight: 700,
+                fontSize: 15,
+                cursor: hasEarnings ? "pointer" : "not-allowed",
+                boxShadow: hasEarnings ? "0 0 30px rgba(0,255,140,0.15)" : "none",
+                marginBottom: 24,
+              }}
+            >
+              {hasEarnings ? "💰 Claim All Rewards" : "No Rewards to Claim"}
+            </button>
+
+            {/* Estimated Daily */}
+            {stakedBal > 0n && (
+              <>
+                <div style={{ 
+                  fontSize: 11, 
+                  fontWeight: 600, 
+                  color: "rgba(255,255,255,0.4)", 
+                  letterSpacing: 1.5,
+                  marginBottom: 12,
+                }}>
+                  ESTIMATED DAILY EARNINGS
+                </div>
+                <div style={{ display: "flex", gap: 12 }}>
+                  <div style={{
+                    flex: 1,
+                    background: "rgba(255,255,255,0.03)",
+                    borderRadius: 8,
+                    padding: 12,
+                    textAlign: "center",
+                  }}>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: "rgba(0,255,140,0.8)" }}>
+                      ~{formatNumber(estimatedDailyUsdc, USDC_DECIMALS, 4)}
+                    </div>
+                    <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>USDC/day</div>
+                  </div>
+                  <div style={{
+                    flex: 1,
+                    background: "rgba(255,255,255,0.03)",
+                    borderRadius: 8,
+                    padding: 12,
+                    textAlign: "center",
+                  }}>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: "rgba(255,200,100,0.8)" }}>
+                      ~{formatNumber(estimatedDailyBrrr, RAFFLE_DECIMALS, 2)}
+                    </div>
+                    <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>BRRR/day</div>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
-          <div className="mt-3 inset statBox">
-            <div className="muted tiny">24H APR (USD EST.)</div>
-            <div className="h2">{apr24hUsd === null ? "—" : `${apr24hUsd.toFixed(2)}%`}</div>
-          </div>
+          {/* Protocol Stats Card */}
+          <div style={{
+            background: "rgba(0,0,0,0.4)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: 16,
+            padding: 24,
+            gridColumn: "1 / -1",
+          }}>
+            <div style={{ 
+              fontSize: 11, 
+              fontWeight: 600, 
+              color: "rgba(255,255,255,0.4)", 
+              letterSpacing: 1.5,
+              marginBottom: 20,
+            }}>
+              PROTOCOL STATS
+            </div>
 
-          <div className="mt-3 inset statBox">
-            <div className="muted tiny">365D APR (USD EST.)</div>
-            <div className="h2">{apr365Usd === null ? "—" : `${apr365Usd.toFixed(2)}%`}</div>
+            <div style={{ 
+              display: "grid", 
+              gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+              gap: 16,
+            }}>
+              <div style={{
+                background: "rgba(255,255,255,0.02)",
+                borderRadius: 12,
+                padding: 16,
+                textAlign: "center",
+              }}>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginBottom: 6, letterSpacing: 1 }}>
+                  TOTAL STAKED
+                </div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: "rgba(255,255,255,0.9)" }}>
+                  {formatNumber(totalStaked, RAFFLE_DECIMALS)}
+                </div>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>BRRR</div>
+              </div>
+
+              <div style={{
+                background: "rgba(255,255,255,0.02)",
+                borderRadius: 12,
+                padding: 16,
+                textAlign: "center",
+              }}>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginBottom: 6, letterSpacing: 1 }}>
+                  EPOCH REWARDS (USDC)
+                </div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: "rgba(0,255,140,0.9)" }}>
+                  {formatNumber(epochRewardUsdc, USDC_DECIMALS, 2)}
+                </div>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>streaming now</div>
+              </div>
+
+              <div style={{
+                background: "rgba(255,255,255,0.02)",
+                borderRadius: 12,
+                padding: 16,
+                textAlign: "center",
+              }}>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginBottom: 6, letterSpacing: 1 }}>
+                  EPOCH REWARDS (BRRR)
+                </div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: "rgba(255,200,100,0.9)" }}>
+                  {formatNumber(epochRewardBrrr, RAFFLE_DECIMALS, 0)}
+                </div>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>streaming now</div>
+              </div>
+
+              <div style={{
+                background: "rgba(255,255,255,0.02)",
+                borderRadius: 12,
+                padding: 16,
+                textAlign: "center",
+              }}>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginBottom: 6, letterSpacing: 1 }}>
+                  NEXT EPOCH IN
+                </div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: "rgba(255,255,255,0.9)" }}>
+                  <EpochCountdown endsAt={epochEndsUsdcQ.data} />
+                </div>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>auto-rolls</div>
+              </div>
+            </div>
+
+            <div style={{ 
+              marginTop: 20, 
+              padding: 16, 
+              background: "rgba(0,255,140,0.03)",
+              border: "1px solid rgba(0,255,140,0.1)",
+              borderRadius: 10,
+            }}>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", lineHeight: 1.6 }}>
+                <strong style={{ color: "rgba(0,255,140,0.8)" }}>How it works:</strong> Protocol fees from Raffle (USDC) and RPS (BRRR) 
+                are distributed to stakers over 24-hour epochs. Stake more BRRR to earn a larger share of rewards.
+                Rewards accrue in real-time and can be claimed at any time.
+              </div>
+            </div>
           </div>
         </div>
       </div>

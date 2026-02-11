@@ -344,12 +344,13 @@ export const adminAbi = [
 ] as const;
 
 export const governorAbi = [
+  // OpenZeppelin Governor ProposalCreated event - NOTE: proposalId and proposer are NOT indexed!
   {
     type: "event",
     name: "ProposalCreated",
     inputs: [
-      { indexed: true, name: "proposalId", type: "uint256" },
-      { indexed: true, name: "proposer", type: "address" },
+      { indexed: false, name: "proposalId", type: "uint256" },
+      { indexed: false, name: "proposer", type: "address" },
       { indexed: false, name: "targets", type: "address[]" },
       { indexed: false, name: "values", type: "uint256[]" },
       { indexed: false, name: "signatures", type: "string[]" },

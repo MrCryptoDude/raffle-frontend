@@ -362,15 +362,35 @@ export default function GasMarketPage() {
 
   async function onDeposit() {
     setTxError(null); setTxSuccess(null);
-    if (wrongChain || amountWei <= 0n || exceedsBalance || !address) return;
+    console.log("[onDeposit] Starting...", { side, amountWei: amountWei.toString(), address, MARKET_ADDRESS, usdcAddress });
+    
+    if (wrongChain) { console.log("[onDeposit] Aborted: wrong chain"); return; }
+    if (amountWei <= 0n) { console.log("[onDeposit] Aborted: amount is 0"); return; }
+    if (exceedsBalance) { console.log("[onDeposit] Aborted: exceeds balance"); return; }
+    if (!address) { console.log("[onDeposit] Aborted: no address"); return; }
+    
     setTxBusy(true);
     try {
-      await writeContractAsync({ abi: marketAbi, address: MARKET_ADDRESS, functionName: side === "long" ? "betLong" : "betShort", args: [amountWei] });
+      console.log("[onDeposit] Calling writeContractAsync...", {
+        functionName: side === "long" ? "betLong" : "betShort",
+        args: [amountWei.toString()],
+        address: MARKET_ADDRESS,
+      });
+      
+      const hash = await writeContractAsync({ 
+        abi: marketAbi, 
+        address: MARKET_ADDRESS, 
+        functionName: side === "long" ? "betLong" : "betShort", 
+        args: [amountWei] 
+      });
+      
+      console.log("[onDeposit] TX submitted!", hash);
+      
       const newPnl = { ...pnlData, totalBetsIn: (BigInt(pnlData.totalBetsIn) + amountWei).toString() };
       setPnlData(newPnl);
       savePnl(address, newPnl);
       setAmount("");
-      setTxSuccess(`Bet ${side.toUpperCase()} placed!`);
+      setTxSuccess(`Bet ${side.toUpperCase()} placed! TX: ${hash?.slice(0, 10)}...`);
       refetchBalance();
       
       // Refetch and save game ID for history
@@ -382,7 +402,10 @@ export default function GasMarketPage() {
       
       refetchUserLong();
       refetchUserShort();
-    } catch (e: any) { setTxError(e?.shortMessage || e?.message || "Bet failed"); }
+    } catch (e: any) { 
+      console.error("[onDeposit] Error:", e);
+      setTxError(e?.shortMessage || e?.message || "Bet failed"); 
+    }
     finally { setTxBusy(false); }
   }
 
@@ -581,19 +604,7 @@ export default function GasMarketPage() {
               {isIdle ? `Start Game & Bet ${side === "long" ? "Long" : "Short"}` : `Bet ${side === "long" ? "Long" : "Short"}`}
             </button>
 
-            {isWaiting && (
-              <div style={{ marginTop: 10 }}>
-                <div style={{ fontSize: 12, color: "rgba(255,200,100,0.95)", marginBottom: 8 }}>Betting closed - waiting for settlement</div>
-                <button 
-                  className={styles.tabBtn} 
-                  onClick={onSettle} 
-                  disabled={wrongChain || txBusy || !address}
-                  style={{ padding: "10px 16px", borderRadius: 12, backgroundColor: "rgba(255,200,100,0.15)", borderColor: "rgba(255,200,100,0.3)" }}
-                >
-                  ⚡ Manual Settle (backup)
-                </button>
-              </div>
-            )}
+            {isWaiting && <div style={{ marginTop: 10, fontSize: 12, color: "rgba(255,200,100,0.95)" }}>Betting closed - waiting for Chainlink settlement</div>}
             {exceedsBalance && <div style={{ marginTop: 10, fontSize: 12, color: "rgba(255,140,140,0.95)" }}>Exceeds balance</div>}
             {txError && <div style={{ marginTop: 10, fontSize: 12, color: "rgba(255,140,140,0.95)" }}>{txError}</div>}
             {txSuccess && <div style={{ marginTop: 10, fontSize: 12, color: "rgba(140,255,180,0.95)" }}>{txSuccess}</div>}

@@ -13,7 +13,6 @@ import { formatUnits, parseUnits } from "viem";
 import { addresses, USDC_DECIMALS, REQUIRED_CHAIN_ID } from "../../lib/addresses";
 import { erc20Abi, raffleManagerAbi } from "../../lib/abis";
 import { MoneyRain } from "../../components/MoneyRain";
-import { RevealModal } from "../../components/RevealModal";
 import { SlotWinners } from "../../components/SlotWinners";
 
 console.log("MANAGER (client):", addresses.manager);
@@ -29,11 +28,8 @@ type PotProps = {
   pulseToken?: number;
   wrongNetwork: boolean;
   hasAddresses: boolean;
-
-  // slot animation trigger (Finalized for this type)
   slotTrigger: number;
 };
-
 
 function isAddress(x: unknown): x is `0x${string}` {
   return typeof x === "string" && /^0x[a-fA-F0-9]{40}$/.test(x);
@@ -91,7 +87,6 @@ function Pot({
   const [tickets, setTickets] = React.useState("1");
   const [pulse, setPulse] = React.useState(false);
 
-  // local tx state so other actions don't get disabled globally
   const [depositPending, setDepositPending] = React.useState(false);
   const [approvePending, setApprovePending] = React.useState(false);
 
@@ -193,7 +188,7 @@ function Pot({
       <div className="mt-3 slot">
         <div className="h1">{formatUnits(targetPot, USDC_DECIMALS)} USDC</div>
         <div className="muted text-[10px]">
-          {drawing ? "SETTLING..." : "OPEN"} • {progressPct}% FILLED
+          {drawing ? "🎲 DRAWING WINNERS..." : "OPEN"} • {progressPct}% FILLED
         </div>
 
         <div className="mt-2 bar">
@@ -228,7 +223,7 @@ function Pot({
 
       {wrongNetwork && (
         <div className="danger text-[10px] mt-2">
-          SWITCH TO BASE SEPOLIA (CHAIN {REQUIRED_CHAIN_ID})
+          SWITCH TO BASE (CHAIN {REQUIRED_CHAIN_ID})
         </div>
       )}
 
@@ -273,7 +268,88 @@ function Pot({
   );
 }
 
-type Stage = "idle" | "spinning" | "mining" | "done" | "error";
+// Matrix-style encrypted display - always shows random characters
+function MatrixEncrypted({ hasWinnings }: { hasWinnings: boolean }) {
+  const [columns, setColumns] = React.useState<string[][]>([]);
+  const matrixChars = "ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ0123456789$¢£¥€₿ABCDEF";
+  const numColumns = 12;
+  const numRows = 3;
+
+  React.useEffect(() => {
+    if (!hasWinnings) {
+      setColumns([]);
+      return;
+    }
+
+    // Initialize columns
+    const initCols = Array.from({ length: numColumns }, () =>
+      Array.from({ length: numRows }, () => 
+        matrixChars[Math.floor(Math.random() * matrixChars.length)]
+      )
+    );
+    setColumns(initCols);
+
+    // Animate - random characters falling
+    const interval = setInterval(() => {
+      setColumns(prev => 
+        prev.map(col => {
+          // Shift down and add new char at top
+          const newCol = [...col];
+          // Random chance to update each cell
+          return newCol.map(() => 
+            Math.random() > 0.7 
+              ? matrixChars[Math.floor(Math.random() * matrixChars.length)]
+              : newCol[Math.floor(Math.random() * numRows)]
+          );
+        })
+      );
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [hasWinnings]);
+
+  if (!hasWinnings) return null;
+
+  return (
+    <div style={{
+      display: "flex",
+      gap: 2,
+      justifyContent: "center",
+      padding: "8px 0",
+      background: "rgba(0,0,0,0.4)",
+      borderRadius: 8,
+      overflow: "hidden",
+    }}>
+      {columns.map((col, i) => (
+        <div key={i} style={{ 
+          display: "flex", 
+          flexDirection: "column",
+          alignItems: "center",
+        }}>
+          {col.map((char, j) => (
+            <span
+              key={j}
+              style={{
+                fontFamily: "monospace",
+                fontSize: 16,
+                fontWeight: 700,
+                color: j === 0 
+                  ? "rgba(0,255,140,1)" 
+                  : j === 1 
+                    ? "rgba(0,255,140,0.7)" 
+                    : "rgba(0,255,140,0.3)",
+                textShadow: j === 0 ? "0 0 10px rgba(0,255,140,0.8)" : "none",
+                lineHeight: 1.2,
+              }}
+            >
+              {char}
+            </span>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function PlayPage() {
   const { isConnected, address } = useAccount();
@@ -297,11 +373,10 @@ export default function PlayPage() {
   const [slotTrigLarge, setSlotTrigLarge] = React.useState(0);
   const [slotTrigMega, setSlotTrigMega] = React.useState(0);
 
-  
-
-  // Local tx state for reveal/claim
-  const [revealPending, setRevealPending] = React.useState(false);
+  // Claim state
   const [claimPending, setClaimPending] = React.useState(false);
+  const [showSuccess, setShowSuccess] = React.useState(false);
+  const [lastClaimAmount, setLastClaimAmount] = React.useState(0n);
 
   // Claim buckets
   const { data: refundsAvail } = useReadContract({
@@ -326,133 +401,11 @@ export default function PlayPage() {
   const winningsAmt = winningsAvail ?? 0n;
   const totalClaimable = refundsAmt + winningsAmt;
 
-  // Reveal eligibility per type (participant-only)
-  const { data: rev0 } = useReadContract({
-    chainId: REQUIRED_CHAIN_ID,
-    abi: raffleManagerAbi,
-    address: addresses.manager,
-    functionName: "revealableRound",
-    args: [0, address ?? "0x0000000000000000000000000000000000000000"],
-    query: { enabled: !!address && hasAddresses, refetchInterval: 2000 },
-  });
-  const { data: rev1 } = useReadContract({
-    chainId: REQUIRED_CHAIN_ID,
-    abi: raffleManagerAbi,
-    address: addresses.manager,
-    functionName: "revealableRound",
-    args: [1, address ?? "0x0000000000000000000000000000000000000000"],
-    query: { enabled: !!address && hasAddresses, refetchInterval: 2000 },
-  });
-  const { data: rev2 } = useReadContract({
-    chainId: REQUIRED_CHAIN_ID,
-    abi: raffleManagerAbi,
-    address: addresses.manager,
-    functionName: "revealableRound",
-    args: [2, address ?? "0x0000000000000000000000000000000000000000"],
-    query: { enabled: !!address && hasAddresses, refetchInterval: 2000 },
-  });
-  const { data: rev3 } = useReadContract({
-    chainId: REQUIRED_CHAIN_ID,
-    abi: raffleManagerAbi,
-    address: addresses.manager,
-    functionName: "revealableRound",
-    args: [3, address ?? "0x0000000000000000000000000000000000000000"],
-    query: { enabled: !!address && hasAddresses, refetchInterval: 2000 },
-  });
-
-  type RevealInfo = {
-    enabled: boolean;
-    roundId: bigint;
-  };
-
-  function toRevealInfo(x: any): RevealInfo {
-    return{
-      enabled: Boolean(x?.[0]),
-      roundId: (x?.[1] as bigint) ?? 0n,
-    };
-  }
-
-  const r0 = toRevealInfo(rev0);
-  const r1 = toRevealInfo(rev1);
-  const r2 = toRevealInfo(rev2);
-  const r3 = toRevealInfo(rev3);
-
-  const anyRevealEnabled = r0.enabled || r1.enabled || r2.enabled || r3.enabled;
-
-  function typeLabel(t: 0 | 1 | 2 | 3) {
-    return t === 0 ? "SMALL" : t === 1 ? "MEDIUM" : t === 2 ? "LARGE" : "MEGA";
-  }
-
-  // Reveal modal state
-  const [revealOpen, setRevealOpen] = React.useState(false);
-  const [revealStage, setRevealStage] = React.useState<Stage>("idle");
-  const [revealError, setRevealError] = React.useState<string | null>(null);
-
-  // "You won X" delta tracking (snapshot per reveal click)
-  const [wBefore, setWBefore] = React.useState<bigint>(0n);
-  const [wDelta, setWDelta] = React.useState<bigint>(0n);
-
-  React.useEffect(() => {
-    setWBefore(0n);
-    setWDelta(0n);
-    setRevealOpen(false);
-    setRevealStage("idle");
-    setRevealError(null);
-  }, [address]);
-
-  async function revealFn(rType: 0 | 1 | 2 | 3) {
-    if (!address || wrongNetwork || !hasAddresses) return;
-
-  // guard: ensure this type is actually revealable right now
-    const info =
-      rType === 0 ? r0 : rType === 1 ? r1 : rType === 2 ? r2 : r3;
-
-    if (!info.enabled) return;
-
-    const before = winningsAmt;
-    setWBefore(before);
-    setWDelta(0n);
-
-    setRevealError(null);
-    setRevealOpen(true);
-    setRevealStage("spinning");
-
-    await new Promise((r) => setTimeout(r, 900));
-
-    try {
-      setRevealPending(true);
-      setRevealStage("mining");
-
-      await writeContractAsync({
-        chainId: REQUIRED_CHAIN_ID,
-        abi: raffleManagerAbi,
-        address: addresses.manager,
-        functionName: "reveal",
-        args: [rType],
-      });
-
-      setRevealStage("done");
-    } catch (e: any) {
-     setRevealStage("error");
-     setRevealError(e?.shortMessage || e?.message || "Reveal failed");
-    } finally {
-     setRevealPending(false);
-   }
-  }
-
-
-  React.useEffect(() => {
-    if (!revealOpen) return;
-    if (revealStage !== "done") return;
-
-    const after = winningsAmt;
-    const delta = after > wBefore ? after - wBefore : 0n;
-    setWDelta(delta);
-  }, [winningsAmt, revealOpen, revealStage, wBefore]);
-
   async function claimFn() {
     if (!address || wrongNetwork || !hasAddresses) return;
     if (totalClaimable === 0n) return;
+
+    const claimAmount = totalClaimable;
 
     try {
       setClaimPending(true);
@@ -463,6 +416,15 @@ export default function PlayPage() {
         functionName: "claim",
         args: [],
       });
+      
+      // Show success
+      setLastClaimAmount(claimAmount);
+      setShowSuccess(true);
+      setTimeout(() => {
+        setShowSuccess(false);
+      }, 8000);
+    } catch {
+      // ignore
     } finally {
       setClaimPending(false);
     }
@@ -479,7 +441,6 @@ export default function PlayPage() {
       setRainTrigger((n) => n + 1);
 
       for (const l of logs) {
-        // wagmi gives decoded args on log.args when ABI matches
         const rt = (l as any)?.args?.rType as number | undefined;
         if (rt === 0) setSlotTrigSmall((n) => n + 1);
         else if (rt === 1) setSlotTrigMed((n) => n + 1);
@@ -493,105 +454,100 @@ export default function PlayPage() {
     <main className="screen" style={{ position: "relative" }}>
       <MoneyRain trigger={rainTrigger} />
 
-      <RevealModal
-        open={revealOpen}
-        stage={revealStage}
-        onClose={() => {
-          setRevealOpen(false);
-          setRevealStage("idle");
-          setRevealError(null);
-        }}
-        error={revealError}
-        wonDelta={wDelta}
-      />
-
       <div className="panel px-5 py-4 text-center marqueePanel">
         <div className="muted text-[10px]">
-          PLAY AT YOUR OWN RISK • ROUND COMPLETES WHEN ALL TICKETS ARE SOLD • WINNERS MUST REVEAL THEN CLAIM
+          🎰 FULLY AUTOMATED • CHAINLINK VRF DRAWS WINNERS • CHAINLINK AUTOMATION SETTLES ROUNDS • JUST BUY TICKETS & CLAIM
         </div>
       </div>
 
-      <div className="panel px-5 py-3 mt-4">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div>
-            <div className="muted text-[10px]">
-              Refunds available: {formatUnits(refundsAmt, USDC_DECIMALS)} USDC
+      {/* Claim Panel */}
+      <div className="panel px-5 py-4 mt-4" style={{
+        background: totalClaimable > 0n 
+          ? "linear-gradient(135deg, rgba(0,20,10,0.9) 0%, rgba(0,40,20,0.8) 100%)"
+          : undefined,
+        border: totalClaimable > 0n ? "1px solid rgba(0,255,140,0.4)" : undefined,
+        boxShadow: totalClaimable > 0n ? "0 0 30px rgba(0,255,140,0.1), inset 0 0 60px rgba(0,255,140,0.05)" : undefined,
+      }}>
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div style={{ flex: 1 }}>
+            <div className="muted text-[10px] mb-2" style={{ letterSpacing: 2 }}>
+              {totalClaimable > 0n ? "⚡ WINNINGS DETECTED" : "YOUR WINNINGS"}
             </div>
-            <div className="muted text-[10px] mt-1">
-              Winnings available: {formatUnits(winningsAmt, USDC_DECIMALS)} USDC
-            </div>
+            
+            {/* Matrix animation when there are winnings */}
+            <MatrixEncrypted hasWinnings={totalClaimable > 0n && !showSuccess} />
+            
+            {/* Show nothing when no winnings and not success */}
+            {totalClaimable === 0n && !showSuccess && (
+              <div style={{ 
+                fontSize: 24, 
+                fontWeight: 700, 
+                color: "rgba(255,255,255,0.2)",
+                padding: "12px 0",
+              }}>
+                —
+              </div>
+            )}
+            
+            {refundsAmt > 0n && !showSuccess && (
+              <div className="muted text-[10px] mt-2">
+                + {formatUnits(refundsAmt, USDC_DECIMALS)} USDC refunds available
+              </div>
+            )}
 
-            {wDelta > 0n && (
-              <div className="mt-2">
-                <div className="badgeWin">
-                  YOU WON {formatUnits(wDelta, USDC_DECIMALS)} USDC
+            {showSuccess && (
+              <div style={{
+                marginTop: 8,
+                padding: "16px 20px",
+                borderRadius: 12,
+                background: "linear-gradient(135deg, rgba(0,255,140,0.2) 0%, rgba(0,200,100,0.1) 100%)",
+                border: "1px solid rgba(0,255,140,0.5)",
+              }}>
+                <div style={{ 
+                  color: "rgba(0,255,140,1)", 
+                  fontWeight: 800, 
+                  fontSize: 14,
+                  letterSpacing: 1,
+                  marginBottom: 4,
+                }}>
+                  ✓ CLAIMED SUCCESSFULLY
+                </div>
+                <div style={{ 
+                  color: "rgba(255,255,255,0.9)", 
+                  fontWeight: 700, 
+                  fontSize: 22,
+                }}>
+                  {formatUnits(lastClaimAmount, USDC_DECIMALS)} USDC
                 </div>
               </div>
             )}
           </div>
+
+          <button
+            className="btn btnGold"
+            onClick={claimFn}
+            disabled={
+              !address ||
+              wrongNetwork ||
+              !hasAddresses ||
+              claimPending ||
+              totalClaimable === 0n
+            }
+            style={{
+              padding: "18px 36px",
+              fontSize: 15,
+              fontWeight: 800,
+              letterSpacing: 1,
+              opacity: totalClaimable === 0n ? 0.4 : 1,
+              boxShadow: totalClaimable > 0n ? "0 0 20px rgba(255,200,100,0.3)" : undefined,
+            }}
+          >
+            {claimPending ? "⏳ CLAIMING..." : totalClaimable > 0n ? "💰 CLAIM" : "NO WINNINGS"}
+          </button>
         </div>
 
-          <div className="flex gap-2 flex-wrap justify-end">
-            {/* Reveal buttons per type (show only those that are currently revealable) */}
-            {(
-              [
-                [0, r0],
-                [1, r1],
-                [2, r2],
-                [3, r3],
-              ] as const
-            )
-              .filter(([, info]) => info.enabled)
-              .map(([t, info]) => (
-                <button
-                  key={t}
-                  className="btn btnMint"
-                  onClick={() => revealFn(t)}
-                  disabled={
-                    !address ||
-                    wrongNetwork ||
-                    !hasAddresses ||
-                    revealPending ||
-                    claimPending
-                  }
-                  title={`Reveal ${typeLabel(t)} round ${info.roundId.toString()}`}
-                >
-                  {revealPending
-                    ? "REVEALING..."
-                    : `REVEAL ${typeLabel(t)} R${info.roundId.toString()}`}
-                </button>
-              ))}
-
-            {/* If nothing is revealable, show a disabled hint button to reduce confusion */}
-            {!anyRevealEnabled && (
-              <button
-                className="btn btnMint"
-                disabled
-                title="No revealable rounds right now"
-              >
-                REVEAL (NONE)
-              </button>
-            )}
-
-            <button
-              className="btn btnGold"
-              onClick={claimFn}
-              disabled={
-                !address ||
-                wrongNetwork ||
-                !hasAddresses ||
-                claimPending ||
-                revealPending ||
-                totalClaimable === 0n
-              }
-            >
-              {claimPending ? "CLAIMING..." : "CLAIM"}
-            </button>
-          </div>
-
-
-        <div className="muted text-[10px] mt-2">
-          Reveal shows only the next revealable round per raffle type (if you participated). Multiple types can be pending. Claim transfers your aggregated winnings + refunds.
+        <div className="muted text-[10px] mt-3" style={{ opacity: 0.6 }}>
+          Rounds settle automatically via Chainlink. When you win, claim your USDC here.
         </div>
       </div>
 
@@ -608,7 +564,7 @@ export default function PlayPage() {
         <div className="panel px-5 py-3 text-center mt-4">
           <div className="danger text-[10px]">WRONG NETWORK</div>
           <div className="muted text-[10px] mt-1">
-            Switch to Base Sepolia (Chain ID {REQUIRED_CHAIN_ID}) to buy tickets.
+            Switch to Base (Chain ID {REQUIRED_CHAIN_ID}) to buy tickets.
           </div>
         </div>
       )}

@@ -2,13 +2,46 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { formatUnits } from "viem";
+import { formatUnits, isAddress } from "viem";
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { governorAbi } from "@/lib/abis";
 import { addresses } from "@/lib/addresses";
 import { useGovernanceProposals } from "@/app/hooks/useGovernanceProposals";
 
 type ListMode = "active" | "passed" | "all";
+type ProposalCategory = "raffle" | "lp" | "signal" | "other";
+
+// BRRR token ABI for delegation
+const brrrAbi = [
+  {
+    type: "function",
+    name: "balanceOf",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "getVotes",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "delegates",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "delegate",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "delegatee", type: "address" }],
+    outputs: [],
+  },
+] as const;
 
 const STATE_COLORS: Record<number, string> = {
   0: "rgba(255,200,100,0.9)", // Pending - yellow
@@ -32,6 +65,13 @@ const STATE_LABELS: Record<number, string> = {
   7: "🎉 Executed",
 };
 
+const CATEGORY_CONFIG: Record<ProposalCategory, { icon: string; label: string; color: string }> = {
+  raffle: { icon: "🎰", label: "Raffle", color: "rgba(255,200,100,0.9)" },
+  lp: { icon: "💰", label: "LP", color: "rgba(100,200,255,0.9)" },
+  signal: { icon: "📢", label: "Signal", color: "rgba(180,150,255,0.9)" },
+  other: { icon: "⚙️", label: "Other", color: "rgba(150,150,150,0.9)" },
+};
+
 function stateLabel(state?: number) {
   if (state === undefined) return "Loading...";
   return STATE_LABELS[state] ?? `Unknown (${state})`;
@@ -50,12 +90,305 @@ function fmtVotes(x?: bigint) {
   return num.toFixed(2);
 }
 
+function fmtAddress(addr?: string) {
+  if (!addr || addr === "0x0000000000000000000000000000000000000000") return "None";
+  return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+}
+
 function matchesMode(state: number | undefined, mode: ListMode) {
   if (mode === "all") return true;
   if (state === undefined) return true;
   if (mode === "active") return state === 0 || state === 1;
   if (mode === "passed") return state === 4 || state === 5 || state === 7;
   return true;
+}
+
+// Detect proposal category from description and targets
+function detectCategory(description?: string, targets?: string[]): ProposalCategory {
+  if (!description) return "other";
+  
+  const descLower = description.toLowerCase();
+  
+  // Check for signal proposals
+  if (descLower.includes("[signal]") || descLower.includes("signal proposal")) {
+    return "signal";
+  }
+  
+  // Check for raffle-related content
+  if (
+    descLower.includes("raffle") ||
+    descLower.includes("forcereset") ||
+    (targets && targets.some((t) => t.toLowerCase() === addresses.manager?.toLowerCase()))
+  ) {
+    return "raffle";
+  }
+  
+  // Check for LP-related content
+  if (
+    descLower.includes("liquidity") ||
+    descLower.includes("lp position") ||
+    descLower.includes("collect fees") ||
+    descLower.includes("community lp")
+  ) {
+    return "lp";
+  }
+  
+  return "other";
+}
+
+// Delegation Component
+function DelegationPanel() {
+  const { address, isConnected } = useAccount();
+  const brrr = addresses.raffle; // BRRR token address
+
+  const [customDelegate, setCustomDelegate] = React.useState("");
+  const [showCustom, setShowCustom] = React.useState(false);
+
+  // Read BRRR balance
+  const { data: balance } = useReadContract({
+    address: brrr,
+    abi: brrrAbi,
+    functionName: "balanceOf",
+    args: address ? [address] : undefined,
+    query: { enabled: !!brrr && !!address, refetchInterval: 10000 },
+  });
+
+  // Read voting power
+  const { data: votingPower } = useReadContract({
+    address: brrr,
+    abi: brrrAbi,
+    functionName: "getVotes",
+    args: address ? [address] : undefined,
+    query: { enabled: !!brrr && !!address, refetchInterval: 10000 },
+  });
+
+  // Read current delegate
+  const { data: currentDelegate } = useReadContract({
+    address: brrr,
+    abi: brrrAbi,
+    functionName: "delegates",
+    args: address ? [address] : undefined,
+    query: { enabled: !!brrr && !!address, refetchInterval: 10000 },
+  });
+
+  // Delegate transaction
+  const { writeContract, data: txHash, isPending } = useWriteContract();
+  const receipt = useWaitForTransactionReceipt({ hash: txHash, query: { enabled: !!txHash } });
+
+  const [successMsg, setSuccessMsg] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (receipt.isSuccess) {
+      setSuccessMsg("Delegation updated! 🎉");
+      setTimeout(() => setSuccessMsg(null), 5000);
+    }
+  }, [receipt.isSuccess]);
+
+  function delegateToSelf() {
+    if (!brrr || !address) return;
+    writeContract({
+      address: brrr,
+      abi: brrrAbi,
+      functionName: "delegate",
+      args: [address],
+    });
+  }
+
+  function delegateToCustom() {
+    if (!brrr || !isAddress(customDelegate)) return;
+    writeContract({
+      address: brrr,
+      abi: brrrAbi,
+      functionName: "delegate",
+      args: [customDelegate as `0x${string}`],
+    });
+  }
+
+  function undelegate() {
+    if (!brrr) return;
+    writeContract({
+      address: brrr,
+      abi: brrrAbi,
+      functionName: "delegate",
+      args: ["0x0000000000000000000000000000000000000000"],
+    });
+  }
+
+  const isDelegatedToSelf = currentDelegate?.toLowerCase() === address?.toLowerCase();
+  const isNotDelegated = !currentDelegate || currentDelegate === "0x0000000000000000000000000000000000000000";
+  const needsDelegation = (balance ?? 0n) > 0n && isNotDelegated;
+
+  if (!isConnected) {
+    return (
+      <div style={{
+        padding: 16,
+        background: "rgba(255,200,100,0.1)",
+        borderRadius: 12,
+        border: "1px solid rgba(255,200,100,0.3)",
+        textAlign: "center",
+      }}>
+        <p style={{ fontSize: 13, color: "rgba(255,200,100,0.9)" }}>
+          ⚠️ Connect your wallet to vote and create proposals
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{
+      padding: 20,
+      background: "rgba(0,0,0,0.3)",
+      borderRadius: 16,
+      border: needsDelegation ? "1px solid rgba(255,200,100,0.5)" : "1px solid rgba(0,255,140,0.15)",
+    }}>
+      {/* Warning if not delegated */}
+      {needsDelegation && (
+        <div style={{
+          padding: 12,
+          background: "rgba(255,200,100,0.15)",
+          borderRadius: 10,
+          marginBottom: 16,
+        }}>
+          <p style={{ fontSize: 13, color: "rgba(255,200,100,0.95)", fontWeight: 600 }}>
+            ⚠️ Delegate your BRRR to vote!
+          </p>
+          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", marginTop: 4 }}>
+            You have BRRR but no voting power. Delegate to yourself to activate.
+          </p>
+        </div>
+      )}
+
+      {/* Stats Row */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 16 }}>
+        <div>
+          <p style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", marginBottom: 4 }}>BRRR BALANCE</p>
+          <p style={{ fontSize: 18, fontWeight: 800, color: "rgba(255,255,255,0.9)" }}>
+            {fmtVotes(balance as bigint | undefined)}
+          </p>
+        </div>
+        <div>
+          <p style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", marginBottom: 4 }}>VOTING POWER</p>
+          <p style={{ fontSize: 18, fontWeight: 800, color: (votingPower ?? 0n) > 0n ? "rgba(0,255,140,0.95)" : "rgba(255,100,100,0.9)" }}>
+            {fmtVotes(votingPower as bigint | undefined)}
+          </p>
+        </div>
+        <div>
+          <p style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", marginBottom: 4 }}>DELEGATED TO</p>
+          <p style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,0.8)", fontFamily: "monospace" }}>
+            {isDelegatedToSelf ? "Yourself ✓" : fmtAddress(currentDelegate as string | undefined)}
+          </p>
+        </div>
+      </div>
+
+      {/* Action Buttons */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        {/* Delegate to Self */}
+        {!isDelegatedToSelf && (
+          <button
+            onClick={delegateToSelf}
+            disabled={isPending || (balance ?? 0n) === 0n}
+            style={{
+              padding: "10px 16px",
+              borderRadius: 10,
+              border: "1px solid rgba(0,255,140,0.5)",
+              background: "rgba(0,255,140,0.15)",
+              color: "rgba(0,255,140,0.95)",
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: isPending || (balance ?? 0n) === 0n ? "not-allowed" : "pointer",
+              opacity: isPending || (balance ?? 0n) === 0n ? 0.5 : 1,
+            }}
+          >
+            {isPending ? "⏳ Delegating..." : "✋ Delegate to Myself"}
+          </button>
+        )}
+
+        {/* Undelegate */}
+        {!isNotDelegated && (
+          <button
+            onClick={undelegate}
+            disabled={isPending}
+            style={{
+              padding: "10px 16px",
+              borderRadius: 10,
+              border: "1px solid rgba(255,100,100,0.4)",
+              background: "rgba(255,100,100,0.1)",
+              color: "rgba(255,100,100,0.9)",
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: isPending ? "not-allowed" : "pointer",
+              opacity: isPending ? 0.5 : 1,
+            }}
+          >
+            ✖ Undelegate
+          </button>
+        )}
+
+        {/* Delegate to Other */}
+        <button
+          onClick={() => setShowCustom(!showCustom)}
+          style={{
+            padding: "10px 16px",
+            borderRadius: 10,
+            border: "1px solid rgba(100,200,255,0.4)",
+            background: "rgba(100,200,255,0.1)",
+            color: "rgba(100,200,255,0.9)",
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          {showCustom ? "✖ Cancel" : "👥 Delegate to Other"}
+        </button>
+      </div>
+
+      {/* Custom Delegate Input */}
+      {showCustom && (
+        <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
+          <input
+            type="text"
+            value={customDelegate}
+            onChange={(e) => setCustomDelegate(e.target.value)}
+            placeholder="0x... delegate address"
+            style={{
+              flex: 1,
+              padding: "10px 14px",
+              borderRadius: 8,
+              border: "1px solid rgba(255,255,255,0.2)",
+              background: "rgba(0,0,0,0.3)",
+              color: "rgba(255,255,255,0.9)",
+              fontSize: 13,
+              fontFamily: "monospace",
+            }}
+          />
+          <button
+            onClick={delegateToCustom}
+            disabled={isPending || !isAddress(customDelegate)}
+            style={{
+              padding: "10px 16px",
+              borderRadius: 8,
+              border: "1px solid rgba(100,200,255,0.5)",
+              background: "rgba(100,200,255,0.2)",
+              color: "rgba(100,200,255,0.95)",
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: isPending || !isAddress(customDelegate) ? "not-allowed" : "pointer",
+              opacity: isPending || !isAddress(customDelegate) ? 0.5 : 1,
+            }}
+          >
+            Delegate
+          </button>
+        </div>
+      )}
+
+      {/* Success Message */}
+      {successMsg && (
+        <p style={{ marginTop: 12, fontSize: 13, color: "rgba(100,255,150,0.9)" }}>
+          {successMsg}
+        </p>
+      )}
+    </div>
+  );
 }
 
 export default function GovernancePage() {
@@ -102,7 +435,10 @@ export default function GovernancePage() {
   }
 
   const filtered = React.useMemo(() => {
-    return data.filter((p) => matchesMode(stateCache[p.proposalId.toString()], mode));
+    return data.filter((p) => {
+      if (!p || !p.proposalId) return false;
+      return matchesMode(stateCache[p.proposalId.toString()], mode);
+    });
   }, [data, mode, stateCache]);
 
   // Selected proposal data
@@ -131,10 +467,32 @@ export default function GovernancePage() {
   });
 
   const stNum = selectedState.data as unknown as number | undefined;
-  const votes = selectedVotes.data as unknown as
-    | { againstVotes: bigint; forVotes: bigint; abstainVotes: bigint }
-    | undefined;
+  
+  // proposalVotes returns [againstVotes, forVotes, abstainVotes] as array
+  const rawVotes = selectedVotes.data as unknown as [bigint, bigint, bigint] | undefined;
+  const votes = rawVotes ? {
+    againstVotes: rawVotes[0],
+    forVotes: rawVotes[1],
+    abstainVotes: rawVotes[2],
+  } : undefined;
+  
   const deadline = selectedDeadline.data as unknown as bigint | undefined;
+  
+  // Debug logging
+  React.useEffect(() => {
+    if (selectedVotes.data) {
+      console.log('[Governance] Raw votes data:', selectedVotes.data);
+      console.log('[Governance] Parsed votes:', votes);
+    }
+  }, [selectedVotes.data, votes]);
+
+  // Get category for selected proposal
+  const selectedCategory = React.useMemo(() => {
+    if (!selected) return "other";
+    return detectCategory(selected.description, selected.targets);
+  }, [selected]);
+
+  const categoryConfig = CATEGORY_CONFIG[selectedCategory];
 
   // Voting
   const { writeContract, data: voteTxHash, isPending: voteIsPending } = useWriteContract();
@@ -204,6 +562,11 @@ export default function GovernancePage() {
         </Link>
       </section>
 
+      {/* Delegation Panel */}
+      <div style={{ marginTop: 20 }}>
+        <DelegationPanel />
+      </div>
+
       {/* Main Content */}
       <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 20, marginTop: 20 }}>
         {/* Left - Proposal List */}
@@ -247,9 +610,30 @@ export default function GovernancePage() {
           {/* Proposal List */}
           <div style={{ marginTop: 16, maxHeight: 500, overflowY: "auto" }}>
             {loading && <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 13 }}>Loading proposals...</p>}
-            {error && <p style={{ color: "rgba(255,100,100,0.9)", fontSize: 13 }}>{error}</p>}
-            {!loading && filtered.length === 0 && (
-              <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 13 }}>No proposals found</p>
+            {error && (
+              <div style={{ padding: 12, background: "rgba(255,100,100,0.1)", borderRadius: 8, marginBottom: 8 }}>
+                <p style={{ color: "rgba(255,100,100,0.9)", fontSize: 12 }}>{error}</p>
+                <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 11, marginTop: 4 }}>Make sure you&apos;re connected to Base Sepolia</p>
+              </div>
+            )}
+            {!loading && !error && filtered.length === 0 && (
+              <div style={{ textAlign: "center", padding: 20 }}>
+                <p style={{ fontSize: 32, marginBottom: 8 }}>📭</p>
+                <p style={{ color: "rgba(255,255,255,0.5)", fontSize: 13 }}>No proposals yet</p>
+                <Link href="/governance/create" style={{
+                  display: "inline-block",
+                  marginTop: 12,
+                  padding: "8px 16px",
+                  borderRadius: 8,
+                  background: "rgba(0,255,140,0.1)",
+                  border: "1px solid rgba(0,255,140,0.3)",
+                  color: "rgba(0,255,140,0.9)",
+                  fontSize: 12,
+                  textDecoration: "none",
+                }}>
+                  Create the first one!
+                </Link>
+              </div>
             )}
 
             {data.slice(0, 50).map((p) => (
@@ -259,6 +643,8 @@ export default function GovernancePage() {
             {filtered.map((p) => {
               const pState = stateCache[p.proposalId.toString()];
               const isSelected = selected?.proposalId === p.proposalId;
+              const category = detectCategory(p.description, p.targets);
+              const catConfig = CATEGORY_CONFIG[category];
 
               return (
                 <button
@@ -276,11 +662,20 @@ export default function GovernancePage() {
                     cursor: "pointer",
                   }}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>
-                      #{p.proposalId.toString().slice(0, 8)}...
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    {/* Category Tag */}
+                    <span style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      padding: "3px 8px",
+                      borderRadius: 12,
+                      background: `${catConfig.color}20`,
+                      color: catConfig.color,
+                    }}>
+                      {catConfig.icon} {catConfig.label}
                     </span>
-                    <span style={{ fontSize: 11, color: stateColor(pState), fontWeight: 600 }}>
+                    {/* State */}
+                    <span style={{ fontSize: 10, color: stateColor(pState), fontWeight: 600 }}>
                       {stateLabel(pState)}
                     </span>
                   </div>
@@ -288,12 +683,14 @@ export default function GovernancePage() {
                     fontSize: 13,
                     fontWeight: 600,
                     color: "rgba(255,255,255,0.9)",
-                    marginTop: 6,
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
                   }}>
                     {p.title || "Untitled Proposal"}
+                  </p>
+                  <p style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginTop: 6 }}>
+                    #{p.proposalId.toString().slice(0, 8)}...
                   </p>
                 </button>
               );
@@ -310,22 +707,39 @@ export default function GovernancePage() {
         }}>
           {selected ? (
             <>
-              {/* Status Badge */}
-              <div style={{
-                display: "inline-block",
-                padding: "8px 16px",
-                borderRadius: 20,
-                background: `${stateColor(stNum)}20`,
-                border: `1px solid ${stateColor(stNum)}40`,
-                color: stateColor(stNum),
-                fontSize: 13,
-                fontWeight: 700,
-              }}>
-                {stateLabel(stNum)}
+              {/* Category & Status Badges */}
+              <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+                {/* Category Badge */}
+                <div style={{
+                  display: "inline-block",
+                  padding: "8px 14px",
+                  borderRadius: 20,
+                  background: `${categoryConfig.color}15`,
+                  border: `1px solid ${categoryConfig.color}40`,
+                  color: categoryConfig.color,
+                  fontSize: 12,
+                  fontWeight: 700,
+                }}>
+                  {categoryConfig.icon} {categoryConfig.label}
+                </div>
+
+                {/* Status Badge */}
+                <div style={{
+                  display: "inline-block",
+                  padding: "8px 14px",
+                  borderRadius: 20,
+                  background: `${stateColor(stNum)}20`,
+                  border: `1px solid ${stateColor(stNum)}40`,
+                  color: stateColor(stNum),
+                  fontSize: 12,
+                  fontWeight: 700,
+                }}>
+                  {stateLabel(stNum)}
+                </div>
               </div>
 
               {/* Title */}
-              <h2 style={{ fontSize: 24, fontWeight: 800, color: "rgba(255,255,255,0.95)", marginTop: 16 }}>
+              <h2 style={{ fontSize: 24, fontWeight: 800, color: "rgba(255,255,255,0.95)", marginTop: 8 }}>
                 {selected.title || "Untitled Proposal"}
               </h2>
 
@@ -333,6 +747,21 @@ export default function GovernancePage() {
               <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginTop: 8 }}>
                 Proposed by: <span style={{ fontFamily: "monospace" }}>{selected.proposer?.slice(0, 10)}...{selected.proposer?.slice(-8)}</span>
               </p>
+
+              {/* Signal Notice */}
+              {selectedCategory === "signal" && (
+                <div style={{
+                  marginTop: 16,
+                  padding: 14,
+                  borderRadius: 10,
+                  background: "rgba(180,150,255,0.1)",
+                  border: "1px solid rgba(180,150,255,0.3)",
+                }}>
+                  <p style={{ fontSize: 13, color: "rgba(180,150,255,0.9)" }}>
+                    📢 <strong>Signal Proposal</strong> — This is a discussion vote. No on-chain actions will be executed.
+                  </p>
+                </div>
+              )}
 
               {/* Description */}
               <div style={{
@@ -504,8 +933,6 @@ export default function GovernancePage() {
                   {canQueue && (
                     <button
                       onClick={() => {
-                        // Queue requires the full proposal data
-                        // For now just show a message
                         alert("Queue functionality requires proposal targets/values/calldatas. Coming soon!");
                       }}
                       disabled={queueIsPending}

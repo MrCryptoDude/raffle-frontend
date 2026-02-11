@@ -269,7 +269,7 @@ export default function HomePage() {
           </div>
 
           <p style={{ marginTop: 40, fontSize: 11, color: "rgba(255,255,255,0.3)" }}>
-            TIP: MAKE SURE YOUR WALLET IS ON BASE SEPOLIA
+            TIP: MAKE SURE YOUR WALLET IS ON BASE
           </p>
         </section>
       </div>

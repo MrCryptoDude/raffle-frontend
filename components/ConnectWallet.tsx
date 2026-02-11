@@ -55,7 +55,7 @@ export function ConnectWallet() {
         </button>
       ) : (
         <button className="btn btnBlue headerBtn" onClick={() => disconnect()}>
-          EXIT
+          Disconnect
         </button>
       )}
     </div>
