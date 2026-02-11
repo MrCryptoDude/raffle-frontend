@@ -83,7 +83,7 @@ const marketAbi = [
 const erc20Abi = [
   { type: "function", name: "allowance", stateMutability: "view", inputs: [{ name: "owner", type: "address" }, { name: "spender", type: "address" }], outputs: [{ type: "uint256" }] },
   { type: "function", name: "approve", stateMutability: "nonpayable", inputs: [{ name: "spender", type: "address" }, { name: "amount", type: "uint256" }], outputs: [{ type: "bool" }] },
-  { type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ name: "account", type: "address" }], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "balanceOf", stateMutability: "nonpayable", inputs: [{ name: "account", type: "address" }], outputs: [{ type: "uint256" }] },
 ] as const;
 
 // ----------------------------
@@ -143,20 +143,35 @@ function savePnl(addr: string, data: PnlData) {
   try { localStorage.setItem(`gasPnl:${addr.toLowerCase()}`, JSON.stringify(data)); } catch {}
 }
 
-// Track game IDs for history page
-function saveGameId(addr: string, gameId: bigint) {
+// Track game IDs for claimable scanning - PERSISTED
+function loadGameIds(addr: string): bigint[] {
   try {
     const key = `gasGames:${addr.toLowerCase()}`;
     const raw = localStorage.getItem(key);
-    const ids: string[] = raw ? JSON.parse(raw) : [];
-    const gameIdStr = gameId.toString();
-    if (!ids.includes(gameIdStr)) {
-      ids.push(gameIdStr);
-      // Keep last 50 games
-      if (ids.length > 50) ids.shift();
-      localStorage.setItem(key, JSON.stringify(ids));
+    if (raw) {
+      const ids: string[] = JSON.parse(raw);
+      return ids.map(id => BigInt(id));
     }
   } catch {}
+  return [];
+}
+
+function saveGameIds(addr: string, gameIds: bigint[]) {
+  try {
+    const key = `gasGames:${addr.toLowerCase()}`;
+    const ids = gameIds.map(id => id.toString());
+    localStorage.setItem(key, JSON.stringify(ids));
+  } catch {}
+}
+
+function addGameId(addr: string, gameId: bigint): bigint[] {
+  const existing = loadGameIds(addr);
+  if (!existing.some(id => id === gameId)) {
+    const updated = [...existing, gameId].slice(-50); // Keep last 50
+    saveGameIds(addr, updated);
+    return updated;
+  }
+  return existing;
 }
 
 // L1 Client
@@ -173,12 +188,18 @@ export default function GasMarketPage() {
   const [amount, setAmount] = React.useState<string>("");
   const [pnlData, setPnlData] = React.useState<PnlData>({ totalBetsIn: "0", totalClaimsOut: "0" });
   
-  // Track recent games for claimable scanning
+  // Track recent games for claimable scanning - LOAD FROM STORAGE
   const [recentGameIds, setRecentGameIds] = React.useState<bigint[]>([]);
   
+  // Load PnL and game IDs from storage on mount
   React.useEffect(() => {
-    if (address) setPnlData(loadPnl(address));
-    else setPnlData({ totalBetsIn: "0", totalClaimsOut: "0" });
+    if (address) {
+      setPnlData(loadPnl(address));
+      setRecentGameIds(loadGameIds(address));
+    } else {
+      setPnlData({ totalBetsIn: "0", totalClaimsOut: "0" });
+      setRecentGameIds([]);
+    }
   }, [address]);
 
   const totalPnl = BigInt(pnlData.totalClaimsOut) - BigInt(pnlData.totalBetsIn);
@@ -207,17 +228,18 @@ export default function GasMarketPage() {
   });
   const currentL1 = currentL1Data as bigint | undefined;
 
-  // Track game IDs for claimable
+  // Track game IDs for claimable - also add current active game
   React.useEffect(() => {
-    if (gameId && gameId > 0n) {
+    if (gameId && gameId > 0n && address) {
       setRecentGameIds(prev => {
-        if (!prev.includes(gameId)) {
-          return [...prev.slice(-9), gameId]; // Keep last 10
+        if (!prev.some(id => id === gameId)) {
+          const updated = addGameId(address, gameId);
+          return updated;
         }
         return prev;
       });
     }
-  }, [gameId]);
+  }, [gameId, address]);
 
   // ---- USDC ----
   const { data: marketUsdcAddr } = useReadContract({
@@ -296,6 +318,7 @@ export default function GasMarketPage() {
       }
     }
     
+    // Scan immediately on mount and whenever recentGameIds changes
     scanClaimable();
     const interval = setInterval(scanClaimable, 8_000);
     return () => { cancelled = true; clearInterval(interval); };
@@ -397,7 +420,8 @@ export default function GasMarketPage() {
       const result = await refetchActiveGame();
       const newGameId = result.data?.[0] as bigint | undefined;
       if (newGameId && newGameId > 0n) {
-        saveGameId(address, newGameId);
+        const updated = addGameId(address, newGameId);
+        setRecentGameIds(updated);
       }
       
       refetchUserLong();
@@ -406,18 +430,6 @@ export default function GasMarketPage() {
       console.error("[onDeposit] Error:", e);
       setTxError(e?.shortMessage || e?.message || "Bet failed"); 
     }
-    finally { setTxBusy(false); }
-  }
-
-  async function onSettle() {
-    setTxError(null); setTxSuccess(null);
-    if (wrongChain || !address) return;
-    setTxBusy(true);
-    try {
-      await writeContractAsync({ abi: marketAbi, address: MARKET_ADDRESS, functionName: "settleGame", args: [] });
-      setTxSuccess(`Game settled!`);
-      refetchActiveGame();
-    } catch (e: any) { setTxError(e?.shortMessage || e?.message || "Settle failed"); }
     finally { setTxBusy(false); }
   }
 
@@ -639,6 +651,7 @@ export default function GasMarketPage() {
               <div>Long Pool: {longPoolTotal?.toString()} | Short Pool: {shortPoolTotal?.toString()}</div>
               <div>Your Balance: {usdcBalance?.toString()} | Allowance: {allowance?.toString()}</div>
               <div>Amount Wei: {amountWei.toString()} | Needs Approval: {needsApproval ? "yes" : "no"}</div>
+              <div>Tracked Games: {recentGameIds.length} | Claimable Games: {claimableGames.length}</div>
             </div>
           </details>
 
