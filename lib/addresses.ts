@@ -2,7 +2,9 @@ export const addresses = {
   usdc: process.env.NEXT_PUBLIC_USDC as `0x${string}`,
   manager: process.env.NEXT_PUBLIC_MANAGER as `0x${string}`,
   staking: process.env.NEXT_PUBLIC_STAKING as `0x${string}`,
-  raffle: process.env.NEXT_PUBLIC_RAFFLE as `0x${string}`,
+  // BRRR token - support both env var names for backwards compatibility
+  raffle: (process.env.NEXT_PUBLIC_BRRR || process.env.NEXT_PUBLIC_RAFFLE) as `0x${string}`,
+  brrr: (process.env.NEXT_PUBLIC_BRRR || process.env.NEXT_PUBLIC_RAFFLE) as `0x${string}`,
   rps: process.env.NEXT_PUBLIC_RPS as `0x${string}`,
   vrfAdapter: process.env.NEXT_PUBLIC_VRF_ADAPTER as `0x${string}`,
   governor: process.env.NEXT_PUBLIC_GOVERNOR as `0x${string}`,
