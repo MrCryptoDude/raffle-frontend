@@ -9,17 +9,24 @@ import { RPC_URL, REQUIRED_CHAIN_ID } from "../lib/addresses";
 
 const queryClient = new QueryClient();
 
-// Select chain based on env var
-const chain = REQUIRED_CHAIN_ID === 8453 ? base : baseSepolia;
-
-const config = createConfig({
-  chains: [chain],
-  connectors: [injected()],
-  transports: {
-    [chain.id]: http(RPC_URL),
-  },
-  ssr: true,
-});
+// Create config based on chain ID
+const config = REQUIRED_CHAIN_ID === 8453
+  ? createConfig({
+      chains: [base],
+      connectors: [injected()],
+      transports: {
+        [base.id]: http(RPC_URL),
+      },
+      ssr: true,
+    })
+  : createConfig({
+      chains: [baseSepolia],
+      connectors: [injected()],
+      transports: {
+        [baseSepolia.id]: http(RPC_URL),
+      },
+      ssr: true,
+    });
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
