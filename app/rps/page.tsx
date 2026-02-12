@@ -343,15 +343,23 @@ export default function RpsPage() {
 
   async function pollForSettlement(gameId: bigint): Promise<any> {
     if (!publicClient) throw new Error("No public client");
-    for (let i = 0; i < 60; i++) {
-      const g = (await publicClient.readContract({
-        address: addresses.rps,
-        abi: rpsManagerAbi,
-        functionName: "games",
-        args: [gameId],
-      })) as any;
-      const settled = Boolean(g.settled ?? g[8]);
-      if (settled) return g;
+    // Poll for up to 120 seconds (VRF + Automation can take time on mainnet)
+    for (let i = 0; i < 120; i++) {
+      try {
+        const g = (await publicClient.readContract({
+          address: addresses.rps,
+          abi: rpsManagerAbi,
+          functionName: "games",
+          args: [gameId],
+        })) as any;
+        // Game struct: player, bet, playerMove, houseMove, requestId, outcome, createdAt, resolvedAt, settled
+        // Array indices: 0=player, 1=bet, 2=playerMove, 3=houseMove, 4=requestId, 5=outcome, 6=createdAt, 7=resolvedAt, 8=settled
+        const settled = Boolean(g.settled ?? g[8]);
+        if (settled) return g;
+      } catch (err) {
+        console.warn(`Poll attempt ${i} failed:`, err);
+        // Continue polling even if one request fails
+      }
       await new Promise((r) => setTimeout(r, 1000));
     }
     throw new Error("Timeout waiting for settlement");
