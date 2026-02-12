@@ -3,10 +3,14 @@
 import * as React from "react";
 import { useAccount, useChainId, usePublicClient, useReadContract, useWriteContract } from "wagmi";
 import { createPublicClient, formatUnits, http, parseUnits } from "viem";
-import { sepolia } from "viem/chains";
+import { mainnet } from "viem/chains";
 import styles from "./gas.module.css";
+import { REQUIRED_CHAIN_ID } from "@/lib/addresses";
 
-const BASE_SEPOLIA_CHAIN_ID = 84532;
+// L1 RPC for fetching Ethereum mainnet data
+const L1_RPC_URL =
+  (process.env.NEXT_PUBLIC_L1_RPC_URL as string | undefined) ??
+  "https://ethereum-rpc.publicnode.com";
 
 const MARKET_ADDRESS =
   (process.env.NEXT_PUBLIC_GAS_PREDICTION_MARKET as `0x${string}` | undefined) ??
@@ -16,10 +20,7 @@ const USDC_ADDRESS_ENV =
   (process.env.NEXT_PUBLIC_USDC as `0x${string}` | undefined) ??
   ("0x4971192F0a5D300a1aC16a39630C865737024458" as const);
 
-const L1_SEPOLIA_RPC_URL =
-  (process.env.NEXT_PUBLIC_L1_SEPOLIA_RPC_URL as string | undefined) ??
-  (process.env.NEXT_PUBLIC_L1_RPC_URL as string | undefined) ??
-  "https://ethereum-sepolia.publicnode.com";
+
 
 const EXPECTED_L1_BLOCK_MS = 12_000;
 const USDC_DECIMALS = 6;
@@ -175,12 +176,12 @@ function addGameId(addr: string, gameId: bigint): bigint[] {
 }
 
 // L1 Client
-const l1SepoliaClient = createPublicClient({ chain: sepolia, transport: http(L1_SEPOLIA_RPC_URL) });
+const l1Client = createPublicClient({ chain: mainnet, transport: http(L1_RPC_URL) });
 
 export default function GasMarketPage() {
   const { isConnected, address } = useAccount();
   const chainId = useChainId();
-  const wrongChain = isConnected && chainId !== BASE_SEPOLIA_CHAIN_ID;
+  const wrongChain = isConnected && chainId !== REQUIRED_CHAIN_ID;
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
 
@@ -481,7 +482,7 @@ export default function GasMarketPage() {
           <span className={styles.timerValue}>{secondsLeft.toFixed(2)}s</span>
         </div>
         {wrongChain ? (
-          <div className={styles.warn}>Wrong network. Switch to <b>Base Sepolia</b>.</div>
+          <div className={styles.warn}>Wrong network. Switch to <b>Base</b>.</div>
         ) : (
           <div className={styles.subtle}>
             <span style={{ color: phaseColor, fontWeight: 700 }}>{phaseBadge}</span>
