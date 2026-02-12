@@ -256,7 +256,7 @@ export default function RpsPage() {
       await switchChainAsync({ chainId: REQUIRED_CHAIN_ID });
       return true;
     } catch {
-      setEphemeralStatus("Please switch to Base Sepolia to continue.", 9000);
+      setEphemeralStatus("Please switch to Base to continue.", 9000);
       return false;
     }
   }
@@ -575,7 +575,7 @@ export default function RpsPage() {
         {wrongNetwork && (
           <div className="mt-2">
             <button className="btn btnGold" onClick={handleSwitchNetwork} disabled={isSwitchingNetwork}>
-              {isSwitchingNetwork ? "SWITCHING..." : "SWITCH TO BASE SEPOLIA"}
+              {isSwitchingNetwork ? "SWITCHING..." : "SWITCH TO BASE"}
             </button>
           </div>
         )}
