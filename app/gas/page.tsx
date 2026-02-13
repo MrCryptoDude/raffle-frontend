@@ -26,6 +26,7 @@ const EXPECTED_L1_BLOCK_MS = 12_000;
 const USDC_DECIMALS = 6;
 const MAX_UINT256 = (2n ** 256n) - 1n;
 const BET_BLOCKS = 20;
+const MIN_BET_USDC = 35n * 10n ** 6n; // $35 minimum bet
 
 // ----------------------------
 // ABIs (Phase-Based Contract)
@@ -361,6 +362,7 @@ export default function GasMarketPage() {
   }, [amount]);
 
   const exceedsBalance = amountWei > usdcBalance;
+  const belowMinBet = amountWei > 0n && amountWei < MIN_BET_USDC;
   const needsApproval = amountWei > 0n && allowance < amountWei;
 
   function setPercent(p: number) {
@@ -598,7 +600,7 @@ export default function GasMarketPage() {
               placeholder="0.00" inputMode="decimal" disabled={wrongChain || isWaiting}
               style={{ backgroundColor: "rgba(0,0,0,0.18)", borderColor: exceedsBalance ? "rgba(255,90,90,0.8)" : undefined }} />
 
-            <div style={{ fontSize: 12, opacity: 0.55, marginTop: 6 }}>Balance: {fmtUsdc(usdcBalance)}</div>
+            <div style={{ fontSize: 12, opacity: 0.55, marginTop: 6 }}>Balance: {fmtUsdc(usdcBalance)} · Min: $35</div>
 
             <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
               {[25, 50, 75, 100].map((p) => (
@@ -612,12 +614,13 @@ export default function GasMarketPage() {
                 onClick={onApprove} style={{ marginTop: 10, marginBottom: 10, opacity: 1 }}>Approve USDC</button>
             )}
 
-            <button className={styles.betCta} disabled={wrongChain || txBusy || amountWei <= 0n || needsApproval || exceedsBalance || isWaiting}
-              onClick={onDeposit} style={{ marginTop: needsApproval ? 0 : 10, opacity: amountWei <= 0n || needsApproval || exceedsBalance || isWaiting ? 0.55 : 1 }}>
+            <button className={styles.betCta} disabled={wrongChain || txBusy || amountWei <= 0n || needsApproval || exceedsBalance || belowMinBet || isWaiting}
+              onClick={onDeposit} style={{ marginTop: needsApproval ? 0 : 10, opacity: amountWei <= 0n || needsApproval || exceedsBalance || belowMinBet || isWaiting ? 0.55 : 1 }}>
               {isIdle ? `Start Game & Bet ${side === "long" ? "Long" : "Short"}` : `Bet ${side === "long" ? "Long" : "Short"}`}
             </button>
 
             {isWaiting && <div style={{ marginTop: 10, fontSize: 12, color: "rgba(255,200,100,0.95)" }}>Betting closed - waiting for Chainlink settlement</div>}
+            {belowMinBet && <div style={{ marginTop: 10, fontSize: 12, color: "rgba(255,140,140,0.95)" }}>Minimum bet is $35 USDC</div>}
             {exceedsBalance && <div style={{ marginTop: 10, fontSize: 12, color: "rgba(255,140,140,0.95)" }}>Exceeds balance</div>}
             {txError && <div style={{ marginTop: 10, fontSize: 12, color: "rgba(255,140,140,0.95)" }}>{txError}</div>}
             {txSuccess && <div style={{ marginTop: 10, fontSize: 12, color: "rgba(140,255,180,0.95)" }}>{txSuccess}</div>}
