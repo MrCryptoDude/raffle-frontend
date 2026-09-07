@@ -26,9 +26,6 @@ export function Header() {
 
         <div className="headerMid">
           <GamesMenu />
-          <Link className="btn btnBlue stakeBtn" href="/stake">
-            STAKE
-          </Link>
           {wrongNetwork && (
             <button 
               className="btn btnGold headerBtn" 

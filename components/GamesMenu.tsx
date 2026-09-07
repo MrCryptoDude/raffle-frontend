@@ -24,9 +24,6 @@ export function GamesMenu() {
         <>
           <div className="linksBackdrop" onClick={() => setOpen(false)} />
           <div className="linksPopup gamesPopup">
-            <Link className="linksItem" href="/play" onClick={() => setOpen(false)}>
-              RAFFLE
-            </Link>
             <Link className="linksItem" href="/rps" onClick={() => setOpen(false)}>
               ROCK PAPER SCISSORS
             </Link>

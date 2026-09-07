@@ -186,29 +186,6 @@ export default function HomePage() {
           />
         </section>
 
-        {/* SECTION 2: Raffle */}
-        <section style={{
-          minHeight: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: "40px 20px",
-          position: "relative",
-          zIndex: 10,
-        }}>
-          <ProductCard
-            icon="🎰"
-            title="RAFFLE"
-            subtitle="THE ORIGINAL BRRR GAME"
-            description="Buy tickets with USDC. The pot fills. Winners take 50/30/10. And 10% goes to stakers — the BRRR cut. Four sizes from micro to mega."
-            features={["🎫 Buy tickets, win big", "💰 50/30/10 split", "💎 Stakers earn fees", "🎲 Chainlink VRF random"]}
-            buttonText="ENTER RAFFLE"
-            href="/play"
-            color="rgba(255,200,100,0.9)"
-            glowColor="rgba(255,200,100,0.15)"
-          />
-        </section>
-
         {/* SECTION 3: RPS */}
         <section style={{
           minHeight: "100vh",
@@ -239,35 +216,6 @@ export default function HomePage() {
           position: "relative",
           zIndex: 10,
         }}>
-          <div style={{
-            maxWidth: 600,
-            margin: "0 auto",
-            padding: 32,
-            borderRadius: 16,
-            background: "rgba(0,0,0,0.4)",
-            border: "1px solid rgba(0,255,140,0.1)",
-          }}>
-            <h3 style={{ fontSize: 24, fontWeight: 800, color: "rgba(0,255,140,0.9)" }}>STAKE BRRR, EARN REWARDS</h3>
-            <p style={{ fontSize: 14, color: "rgba(255,255,255,0.6)", marginTop: 12 }}>
-              All games feed the staking pool. Stake your BRRR tokens and earn a cut from every game played.
-            </p>
-            <Link href="/stake" style={{
-              display: "inline-block",
-              marginTop: 24,
-              padding: "14px 32px",
-              borderRadius: 12,
-              background: "linear-gradient(135deg, rgba(0,255,140,0.2) 0%, rgba(0,255,140,0.1) 100%)",
-              border: "1px solid rgba(0,255,140,0.4)",
-              color: "rgba(0,255,140,0.95)",
-              fontWeight: 700,
-              fontSize: 14,
-              textDecoration: "none",
-              transition: "all 0.2s",
-            }}>
-              GO TO STAKING →
-            </Link>
-          </div>
-
           <p style={{ marginTop: 40, fontSize: 11, color: "rgba(255,255,255,0.3)" }}>
             TIP: MAKE SURE YOUR WALLET IS ON BASE
           </p>
