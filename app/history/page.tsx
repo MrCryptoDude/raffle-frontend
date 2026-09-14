@@ -5,6 +5,7 @@ import { useAccount, useReadContract, usePublicClient } from "wagmi";
 import { formatUnits } from "viem";
 
 import { addresses, USDC_DECIMALS, REQUIRED_CHAIN_ID } from "../../lib/addresses";
+import { RpsMyGames } from "../../components/RpsMyGames";
 
 type GameTab = "rps" | "gas";
 
@@ -193,9 +194,7 @@ export default function HistoryPage() {
 
       <div className="mt-4 space-y-3">
         {gameTab === "rps" && (
-          <div className="panel px-5 py-4">
-            <div className="muted text-[10px]">RPS history coming soon…</div>
-          </div>
+          <RpsMyGames title="ROCK PAPER SCISSORS" emptyText="No games yet. Pick a table on the RPS page to play." />
         )}
 
         {/* GAS PREDICTION HISTORY */}

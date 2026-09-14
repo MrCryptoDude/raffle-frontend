@@ -6,6 +6,7 @@ import { base, baseSepolia } from "wagmi/chains";
 import { injected } from "wagmi/connectors";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RPC_URL, REQUIRED_CHAIN_ID } from "../lib/addresses";
+import { RpsPvpProvider } from "../lib/RpsPvpContext";
 
 const queryClient = new QueryClient();
 
@@ -31,7 +32,9 @@ const config = REQUIRED_CHAIN_ID === 8453
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <WagmiProvider config={config}>
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        <RpsPvpProvider>{children}</RpsPvpProvider>
+      </QueryClientProvider>
     </WagmiProvider>
   );
 }

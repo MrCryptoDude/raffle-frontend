@@ -200,7 +200,7 @@ export default function HomePage() {
             icon="✊"
             title="ROCK PAPER SCISSORS"
             subtitle="CLASSIC GAME, CRYPTO STAKES"
-            description="Challenge anyone to RPS. Commit your move, reveal when ready. Winner takes all minus the BRRR cut. No luck — pure strategy and timing."
+            description="Challenge anyone to RPS for USDC. Pick a table from $1 to $1000, pick your move, and the game settles in seconds. Winner takes the pot minus a 0.1% fee."
             features={["✊ Rock crushes scissors", "✋ Paper covers rock", "✌️ Scissors cuts paper", "🏆 Winner takes pot"]}
             buttonText="PLAY RPS"
             href="/rps"
