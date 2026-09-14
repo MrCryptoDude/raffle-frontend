@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useAccount, useChainId, useSwitchChain } from "wagmi";
 import { REQUIRED_CHAIN_ID } from "../lib/addresses";
+import { SUPPORTED_CHAIN_IDS } from "../lib/rpsChains";
 import { ConnectWallet } from "./ConnectWallet";
 import { LinksMenu } from "./LinksMenu";
 import { GamesMenu } from "./GamesMenu";
@@ -12,7 +13,9 @@ export function Header() {
   const chainId = useChainId();
   const { switchChain, isPending } = useSwitchChain();
 
-  const wrongNetwork = isConnected && chainId !== REQUIRED_CHAIN_ID;
+  // Robinhood Chain is a valid place to be too, for its rooms. Pages that need
+  // Base in particular (gas) check for it themselves.
+  const wrongNetwork = isConnected && !SUPPORTED_CHAIN_IDS.includes(chainId);
 
   return (
     <div className="screen headerScreen">

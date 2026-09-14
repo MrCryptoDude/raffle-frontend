@@ -1,5 +1,7 @@
 import { parseAbi, keccak256, encodeAbiParameters, formatUnits, type Address, type Hex } from "viem";
 
+import type { RpsChain } from "./rpsChains";
+
 /** The player-versus-player game. Unset until it is deployed. */
 export const RPS_PVP_ADDRESS = (process.env.NEXT_PUBLIC_RPS_PVP || "") as Address | "";
 
@@ -23,6 +25,7 @@ export const rpsPvpAbi = parseAbi([
   "event GameCreated(uint256 indexed id, address indexed creator, uint256 stake, bytes32 commitment, uint64 openUntil)",
   "error NotAStakeTier(uint256 stake)",
   "error CommitmentReused()",
+  "error TransferShortfall(uint256 expected)",
   "error NotOpen(uint256 id)",
   "error NotJoined(uint256 id)",
   "error NotCreator(uint256 id, address caller)",
@@ -57,6 +60,40 @@ export type Game = {
   commitment: Hex;
 };
 
+/**
+ * A game on any chain, in one shape the interface can render. Accounts are
+ * strings because Solana keys are not EVM addresses.
+ */
+export type AnyGame = {
+  chain: RpsChain;
+  id: bigint;
+  creator: string;
+  /** Null until someone joins. */
+  challenger: string | null;
+  stake: bigint;
+  status: number;
+  result: number;
+  createdAt: number;
+  openUntil: number;
+  joinedAt: number;
+  revealBy: number;
+  creatorMove: number;
+  challengerMove: number;
+  commitment: Hex;
+};
+
+/** A game waiting in the lobby, on whichever chain it lives. */
+export type OpenRow = { chain: RpsChain; id: bigint; creator: string; stake: bigint; createdAt: number; openUntil: number };
+
+/** Unique across chains: the same id can exist on two of them. */
+export const gameKey = (g: { chain: RpsChain; id: bigint }) => `${g.chain.key}:${g.id}`;
+
+/** EVM addresses compare without case; Solana keys are case sensitive. */
+export function sameAccount(a: string | null | undefined, b: string | null | undefined, chain: RpsChain) {
+  if (!a || !b) return false;
+  return chain.kind === "evm" ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
+
 /** Matches `keccak256(abi.encode(move, salt, player))` in the contract. */
 export function commitmentFor(move: Move, salt: Hex, player: Address): Hex {
   return keccak256(
@@ -80,19 +117,19 @@ export function newSalt(): Hex {
  */
 type Secret = { move: Move; salt: Hex };
 
-function secretKey(chainId: number, contract: string, commitment: Hex) {
-  return `brrr:rpspvp:${chainId}:${contract.toLowerCase()}:${commitment.toLowerCase()}`;
+function secretKey(chain: string, contract: string, commitment: Hex) {
+  return `brrr:rpspvp:${chain}:${contract.toLowerCase()}:${commitment.toLowerCase()}`;
 }
 
-export function saveSecret(chainId: number, contract: string, commitment: Hex, secret: Secret) {
+export function saveSecret(chain: string, contract: string, commitment: Hex, secret: Secret) {
   try {
-    localStorage.setItem(secretKey(chainId, contract, commitment), JSON.stringify(secret));
+    localStorage.setItem(secretKey(chain, contract, commitment), JSON.stringify(secret));
   } catch {}
 }
 
-export function loadSecret(chainId: number, contract: string, commitment: Hex): Secret | null {
+export function loadSecret(chain: string, contract: string, commitment: Hex): Secret | null {
   try {
-    const raw = localStorage.getItem(secretKey(chainId, contract, commitment));
+    const raw = localStorage.getItem(secretKey(chain, contract, commitment));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Secret;
     return MOVES.includes(parsed.move) && /^0x[0-9a-fA-F]{64}$/.test(parsed.salt) ? parsed : null;
@@ -101,9 +138,9 @@ export function loadSecret(chainId: number, contract: string, commitment: Hex): 
   }
 }
 
-export function forgetSecret(chainId: number, contract: string, commitment: Hex) {
+export function forgetSecret(chain: string, contract: string, commitment: Hex) {
   try {
-    localStorage.removeItem(secretKey(chainId, contract, commitment));
+    localStorage.removeItem(secretKey(chain, contract, commitment));
   } catch {}
 }
 
@@ -126,7 +163,10 @@ export function countdown(secondsLeft: number): string {
 }
 
 /** What a finished or running game means for the player looking at it. */
-export function outcomeFor(g: Game, me?: Address): "WIN" | "LOSS" | "DRAW" | null {
+export function outcomeFor(
+  g: { status: number; result: number; creator: string },
+  me?: string
+): "WIN" | "LOSS" | "DRAW" | null {
   if (g.status !== Status.Settled || !me) return null;
   if (g.result === Result.Draw) return "DRAW";
   const iAmCreator = g.creator.toLowerCase() === me.toLowerCase();
@@ -136,6 +176,7 @@ export function outcomeFor(g: Game, me?: Address): "WIN" | "LOSS" | "DRAW" | nul
 
 const FRIENDLY: Record<string, string> = {
   NotAStakeTier: "That amount is not one of the tables.",
+  TransferShortfall: "The token arrived short, so the game refused it.",
   CommitmentReused: "That move secret was already used. Try again.",
   NotOpen: "Someone else took that game first.",
   GameLapsed: "That game stopped taking players.",

@@ -3,12 +3,29 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
+/**
+ * The node behind a chain name. Callers pick a chain by name and never supply
+ * a URL, so this proxy cannot be pointed at arbitrary hosts.
+ */
+function upstreamFor(chain: string | null): string | undefined {
+  if (chain === "robinhood") {
+    // The public Robinhood node sometimes sends its CORS header twice, which
+    // browsers reject, so the browser reads that chain through here.
+    return (
+      process.env.RH_RPC_UPSTREAM ||
+      process.env.NEXT_PUBLIC_RH_RPC_URL ||
+      "https://rpc.mainnet.chain.robinhood.com"
+    );
+  }
+  // Use your env var (you set NEXT_PUBLIC_RPC_URL to Alchemy)
+  return process.env.NEXT_PUBLIC_RPC_URL;
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.text();
 
-    // Use your env var (you set NEXT_PUBLIC_RPC_URL to Alchemy)
-    const upstream = process.env.NEXT_PUBLIC_RPC_URL;
+    const upstream = upstreamFor(new URL(req.url).searchParams.get("chain"));
     if (!upstream) {
       return NextResponse.json({ error: "Missing NEXT_PUBLIC_RPC_URL" }, { status: 500 });
     }
@@ -19,6 +36,7 @@ export async function POST(req: Request) {
       body,
       // IMPORTANT: no caching
       cache: "no-store",
+      signal: AbortSignal.timeout(25_000),
     });
 
     const text = await r.text();

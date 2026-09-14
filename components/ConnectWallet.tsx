@@ -4,6 +4,7 @@ import * as React from "react";
 import { useAccount, useConnect, useDisconnect, useChainId, useSwitchChain } from "wagmi";
 import { injected } from "wagmi/connectors";
 import { REQUIRED_CHAIN_ID } from "../lib/addresses";
+import { SUPPORTED_CHAIN_IDS } from "../lib/rpsChains";
 
 function shortAddr(a?: string) {
   if (!a) return "";
@@ -18,16 +19,20 @@ export function ConnectWallet() {
   const { disconnect } = useDisconnect();
   const { switchChainAsync, isPending: isSwitching } = useSwitchChain();
 
-  const wrongNetwork = isConnected && chainId !== REQUIRED_CHAIN_ID;
+  const wrongNetwork = isConnected && !SUPPORTED_CHAIN_IDS.includes(chainId);
 
   async function onConnect() {
     try {
-      await connectAsync({ connector: injected() });
-      setTimeout(async () => {
-        try {
-          await switchChainAsync({ chainId: REQUIRED_CHAIN_ID });
-        } catch {}
-      }, 100);
+      const { chainId: connectedOn } = await connectAsync({ connector: injected() });
+      // A wallet already on Robinhood Chain stays there for its rooms; any
+      // network the site does not know goes to Base.
+      if (!SUPPORTED_CHAIN_IDS.includes(connectedOn)) {
+        setTimeout(async () => {
+          try {
+            await switchChainAsync({ chainId: REQUIRED_CHAIN_ID });
+          } catch {}
+        }, 100);
+      }
     } catch {}
   }
 
